@@ -2,6 +2,7 @@
 
 from .layout import (
     render_choices_panel,
+    render_debug_overlay,
     render_detailed_status,
     render_error_panel,
     render_game_over_screen,
@@ -50,6 +51,7 @@ __all__ = [
     "render_help_panel",
     "render_detailed_status",
     "render_error_panel",
+    "render_debug_overlay",
     "detect_terminal_capabilities",
     "get_retro_theme",
     "get_box_style",

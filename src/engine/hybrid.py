@@ -38,6 +38,18 @@ class HybridWrapper(InferenceProvider):
         self.circuit_open: bool = False
         self.last_used_backend: str = "Cloud" if (self.cloud and self.cloud.is_available()) else "Local"
 
+    @property
+    def provider_name(self) -> str:
+        """Returns active provider identifier."""
+        return "hybrid"
+
+    @property
+    def model_name(self) -> str:
+        """Returns model name from active backend."""
+        if self.circuit_open or not self.cloud:
+            return getattr(self.local, "model_name", "unknown")
+        return getattr(self.cloud, "model_id", "unknown")
+
     def is_available(self) -> bool:
         """Returns True if either the local engine or the cloud engine is available."""
         return self.local.is_available() or (bool(self.cloud) and self.cloud.is_available())

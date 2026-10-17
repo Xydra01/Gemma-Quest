@@ -6,19 +6,28 @@ non-blocking asyncio task management, input processing, and timeout resilience.
 
 import asyncio
 import logging
+import time
 from typing import Callable, List, Optional, Tuple
 from rich import box
 
 from src.config import GameConfig, load_config
 from src.engine.base import InferenceError, InferenceProvider
+from src.engine.diagnostics import SessionLogger
 from src.engine.parser import ResponseParser
 from src.engine.prompt_builder import PromptBuilder
 from src.engine.summary_refiner import SummaryRefiner
+from src.engine.token_monitor import (
+    ContextGuard,
+    TokenMonitor,
+    estimate_messages_tokens,
+    estimate_tokens,
+)
 from src.engine.validator import NarrativeValidator
 from src.state.models import CharacterStatus, GameResponse, StoryContext
 from src.state.sync import sync_state
 from src.ui.input_engine import ActionPayload, InputEngine, InputType
 from src.ui.layout import (
+    render_debug_overlay,
     render_detailed_status,
     render_error_panel,
     render_help_panel,
@@ -96,6 +105,9 @@ class GameEngine:
         summary_refiner: Optional[SummaryRefiner] = None,
         timeout_seconds: float = 30.0,
         player_name: str = "Hero",
+        session_logger: Optional[SessionLogger] = None,
+        token_monitor: Optional[TokenMonitor] = None,
+        context_guard: Optional[ContextGuard] = None,
     ):
         """Initialize the game engine with required pipeline components.
 
@@ -110,6 +122,9 @@ class GameEngine:
             summary_refiner: Optional 2nd-pass summary condenser.
             timeout_seconds: Timeout threshold for model inference in seconds.
             player_name: Character name for status and game-over checks.
+            session_logger: Optional SessionLogger for recording debug_log.txt.
+            token_monitor: Optional TokenMonitor for tracking token metrics.
+            context_guard: Optional ContextGuard for memory and NPC protection.
         """
         self.config = config or load_config()
         self.provider = provider
@@ -122,6 +137,15 @@ class GameEngine:
         self.summary_refiner = summary_refiner or SummaryRefiner(config=context_cfg)
         self.timeout_seconds = timeout_seconds
         self.player_name = player_name
+
+        self.session_logger = session_logger or SessionLogger()
+        self.token_monitor = token_monitor or TokenMonitor(
+            context_limit=4096
+        )
+        self.context_guard = context_guard or ContextGuard(
+            config=context_cfg,
+            context_limit=4096,
+        )
 
         self.context: Optional[StoryContext] = None
         self.current_response: Optional[GameResponse] = None
@@ -215,7 +239,8 @@ class GameEngine:
     async def execute_turn(self, player_action: str) -> Optional[GameResponse]:
         """Execute a complete single turn pipeline.
 
-        Builds prompt -> Non-blocking inference -> Parse JSON -> Validate -> Sync State -> Refine Summary.
+        Prunes stale NPCs -> Estimates tokens & guards context -> Dispatches prompt ->
+        Records latency & tokens -> Parses JSON -> Validates -> Syncs state -> Logs deltas.
 
         Args:
             player_action: Action string selected or typed by the player.
@@ -224,45 +249,98 @@ class GameEngine:
             Validated GameResponse, or None if the player elected to quit during recovery.
         """
         assert self.context is not None, "StoryContext must be initialized before executing turns."
+        turn_num = self.context.turn_count + 1
+        self.session_logger.log_turn_start(turn_num, player_action)
 
-        # 1. Build messages
+        # 1. Prune characters (>10 turns dead or inactive)
+        retained_chars, pruned_names = self.context_guard.prune_characters(
+            self.context.active_characters,
+            current_turn=self.context.turn_count,
+            player_name=self.player_name,
+        )
+        if pruned_names:
+            self.session_logger.log_guard_event(
+                "CHARACTER_PRUNING",
+                f"Pruned inactive/dead NPCs: {', '.join(pruned_names)}",
+            )
+            self.context.active_characters = retained_chars
+
+        # 2. Build messages and estimate token usage
         messages = self.prompt_builder.build_chat_messages(self.context, player_action)
+        est_prompt_tokens = estimate_messages_tokens(messages)
 
-        # 2. Inference Loop with retry & fallback handling
+        # 3. Context Guard overflow check (> 80% of 4096 = 3276 tokens)
+        if self.context_guard.is_approaching_limit(est_prompt_tokens):
+            compressed = self.context_guard.compress_summary(self.context.story_summary)
+            self.session_logger.log_guard_event(
+                "CONTEXT_WINDOW_WARNING",
+                f"Prompt estimated at {est_prompt_tokens} tokens (> {self.context_guard.warning_token_threshold}). Compressing story summary.",
+            )
+            self.context.story_summary = compressed
+            messages = self.prompt_builder.build_chat_messages(self.context, player_action)
+            est_prompt_tokens = estimate_messages_tokens(messages)
+
+        self.session_logger.log_prompt(turn_num, messages, est_prompt_tokens)
+
+        # 4. Inference Loop with retry & fallback handling
+        t0 = time.time()
         while True:
             raw_output, error_reason = await self.execute_inference(messages, self.context.turn_count)
+            latency = time.time() - t0
 
             if error_reason is None and raw_output:
-                # Successfully received model output, process response
+                completion_tokens = estimate_tokens(raw_output)
+                self.token_monitor.record_turn(est_prompt_tokens, completion_tokens, latency)
+                self.session_logger.log_response(
+                    turn=turn_num,
+                    raw_response=raw_output,
+                    latency_seconds=latency,
+                    estimated_tokens=completion_tokens,
+                )
                 try:
                     parsed_response = self.parser.parse_with_retry(
                         raw_text=raw_output,
                         local_context=self.context,
                         provider=self.provider,
                     )
+                    self.session_logger.log_parse_result(
+                        turn=turn_num,
+                        success=True,
+                    )
                     break
                 except Exception as exc:
                     logger.warning(f"Response parsing failed: {exc}")
                     error_reason = f"Malformed model response: {exc}"
+                    self.session_logger.log_parse_result(
+                        turn=turn_num,
+                        success=False,
+                        error=str(exc),
+                    )
 
             # If we reached here, inference or parsing failed
             decision, fallback_resp = self.handle_inference_recovery(error_reason or "Unknown error", player_action)
             if decision == "retry":
+                t0 = time.time()
                 continue
             elif decision == "fallback":
                 parsed_response = fallback_resp
+                completion_tokens = estimate_tokens(fallback_resp.narration)
+                self.token_monitor.record_turn(est_prompt_tokens, completion_tokens, latency)
+                self.session_logger.log_guard_event("FALLBACK_USED", f"Used turn fallback response for action '{player_action}'.")
                 break
             else:
                 # Player chose quit
                 return None
 
-        # 3. Guardian Narrative Validation
+        # 5. Guardian Narrative Validation
         validated_response = self.validator.validate_response(parsed_response, self.context)
 
-        # 4. Sync Narrative State
+        # 6. Sync Narrative State & log delta
+        old_context = self.context.model_copy(deep=True)
         self.context = sync_state(self.context, validated_response)
+        self.session_logger.log_state_transition(self.context.turn_count, old_context, self.context)
 
-        # 5. Optional Summary Refinement (2nd-pass)
+        # 7. Optional Summary Refinement (2nd-pass)
         if self.summary_refiner.should_refine(self.context):
             try:
                 refined = await asyncio.to_thread(
@@ -297,6 +375,10 @@ class GameEngine:
         self.context = initial_context
         self.current_response = initial_response
         self.is_running = True
+
+        model_name = getattr(self.provider, "model_name", "unknown")
+        provider_name = getattr(self.provider, "provider_name", "unknown")
+        self.session_logger.log_session_start(model_name, provider_name)
 
         while self.is_running:
             # Check for Game Over condition (player death)
@@ -333,7 +415,17 @@ class GameEngine:
 
             # Handle Commands
             if payload.input_type == InputType.COMMAND:
-                if payload.command_name == "help":
+                if payload.command_name == "debug":
+                    self.tui.print_panel(
+                        render_debug_overlay(
+                            context=self.context,
+                            token_monitor=self.token_monitor,
+                            box_style=self.tui.box_style,
+                        )
+                    )
+                    self.input_engine._input_func("\nPress Enter to return to the game...")
+                    continue
+                elif payload.command_name == "help":
                     self.tui.print_panel(render_help_panel(box_style=self.tui.box_style))
                     self.input_engine._input_func("\nPress Enter to return to the game...")
                     continue

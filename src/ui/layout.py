@@ -1,6 +1,6 @@
 """Layout renderers, panel builders, and retro screen components."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from rich import box
 from rich.box import Box
 from rich.panel import Panel
@@ -309,6 +309,7 @@ def render_help_panel(
     table.add_row("Custom Text", "Type any custom free-form action (e.g. 'search the chest').")
     table.add_row("<Enter>", "Empty input defaults to [WAIT] (observe surroundings).")
     table.add_row("/status, /inv", "View detailed player context, full inventory, and memory.")
+    table.add_row("[?], /debug", "Open live system diagnostics, token monitor, and state inspector.")
     table.add_row("/help", "Display this commands reference menu.")
     table.add_row("/restart", "Restart the adventure and character setup from scratch.")
     table.add_row("/quit, /exit", "Exit Gemma-Quest safely.")
@@ -410,5 +411,94 @@ def render_error_panel(
         border_style="bold red",
         padding=(1, 2),
     )
+
+
+def render_debug_overlay(
+    context: StoryContext,
+    token_monitor: Optional[Any] = None,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render comprehensive live diagnostics, StoryContext inspection, and token monitor overlay.
+
+    Args:
+        context: Authoritative current StoryContext.
+        token_monitor: Optional TokenMonitor instance providing usage and latency statistics.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Diagnostics Overlay Panel.
+    """
+    table = Table.grid(expand=True, padding=(0, 1))
+    table.add_column(style="bold yellow", width=18)
+    table.add_column(style="bright_green")
+
+    # 1. State Inspection
+    table.add_row("[LOCATION]", f"[bold yellow]{context.current_location}[/bold yellow]")
+    table.add_row("[WORLD TONE]", f"[white]{context.world_tone or 'Default'}[/white]")
+    table.add_row("[TURN COUNT]", f"[bright_green]{context.turn_count}[/bright_green]")
+
+    # Items
+    items_str = ", ".join(context.key_items_held) if context.key_items_held else "[dim grey]None[/dim grey]"
+    table.add_row("[KEY ITEMS]", f"[white]{items_str}[/white]")
+
+    # Characters
+    if context.active_characters:
+        chars_list = []
+        for name, status in context.active_characters.items():
+            st_val = status.value if hasattr(status, "value") else str(status)
+            color = "bright_green"
+            if str(st_val).upper() == "DEAD":
+                color = "bold red"
+            elif str(st_val).upper() == "HOSTILE":
+                color = "bold yellow"
+            elif str(st_val).upper() == "ALLY":
+                color = "bold cyan"
+            chars_list.append(f"{name}: [{color}]{st_val}[/{color}]")
+        chars_str = ", ".join(chars_list)
+    else:
+        chars_str = "[dim grey]None[/dim grey]"
+    table.add_row("[CHARACTERS]", chars_str)
+
+    # Rolling Summary
+    table.add_row("[MEMORY SUMMARY]", f"[dim grey]{context.story_summary}[/dim grey]")
+
+    # 2. Token Monitor & Metrics
+    if token_monitor is not None:
+        table.add_row("", "")
+        table.add_row("[bold cyan]-- MONITOR --[/bold cyan]", "[bold cyan]----------------------------------------[/bold cyan]")
+
+        last_pt = getattr(token_monitor, "last_prompt_tokens", 0)
+        limit = getattr(token_monitor, "context_limit", 4096)
+        pct = getattr(token_monitor, "context_utilization_percent", 0.0)
+        status_color = "bright_green" if pct < 80.0 else "bold red"
+
+        table.add_row(
+            "[CONTEXT USAGE]",
+            f"[{status_color}]{last_pt}[/{status_color}] / [white]{limit} tokens[/white] ([{status_color}]{pct:.1f}%[/{status_color}])",
+        )
+
+        last_ct = getattr(token_monitor, "last_completion_tokens", 0)
+        last_lat = getattr(token_monitor, "last_latency", 0.0)
+        table.add_row(
+            "[LAST INFERENCE]",
+            f"[white]{last_ct} completion tokens[/white] in [bright_green]{last_lat:.2f}s[/bright_green]",
+        )
+
+        cum_tot = getattr(token_monitor, "cumulative_total_tokens", 0)
+        avg_lat = getattr(token_monitor, "average_latency", 0.0)
+        table.add_row(
+            "[CUMULATIVE]",
+            f"[white]{cum_tot} total tokens[/white] | Avg Latency: [bright_green]{avg_lat:.2f}s/turn[/bright_green]",
+        )
+
+    return Panel(
+        table,
+        box=box_style,
+        title="[bold yellow]SYSTEM DIAGNOSTICS & LIVE STATE INSPECTOR[/bold yellow]",
+        subtitle="[dim grey]Session log active at debug_log.txt • Press Enter to resume[/dim grey]",
+        border_style="bold cyan",
+        padding=(1, 2),
+    )
+
 
 

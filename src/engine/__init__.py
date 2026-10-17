@@ -9,6 +9,7 @@ from .base import (
     InferenceTimeoutError,
 )
 from .cloud import CloudProvider
+from .diagnostics import SessionLogger
 from .factory import LLMFactory
 from .hybrid import HybridWrapper
 from .initializer import (
@@ -26,6 +27,12 @@ from .parser import (
 )
 from .prompt_builder import PromptBuilder
 from .summary_refiner import SummaryRefiner
+from .token_monitor import (
+    ContextGuard,
+    TokenMonitor,
+    estimate_messages_tokens,
+    estimate_tokens,
+)
 from .validator import NarrativeValidator
 
 __all__ = [
@@ -51,4 +58,9 @@ __all__ = [
     "create_starter_fallback_response",
     "GameEngine",
     "create_turn_fallback_response",
+    "SessionLogger",
+    "TokenMonitor",
+    "ContextGuard",
+    "estimate_tokens",
+    "estimate_messages_tokens",
 ]
