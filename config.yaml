@@ -21,7 +21,7 @@ llm:
   temperature: 0.8
   top_p: 0.9
   top_k: 50
-  max_tokens: 1024
+  max_tokens: 2048
   timeout_seconds: 60
 
 resilience:

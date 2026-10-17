@@ -101,7 +101,7 @@ class NarrativeValidator:
     def validate_summary(
         cls, response: GameResponse, context: StoryContext
     ) -> GameResponse:
-        """Ensure the story summary is not empty or truncated (< 10 chars).
+        """Ensure the story summary is not empty, truncated (< 10 chars), or contaminated with thinking traces.
 
         Args:
             response: Candidate GameResponse.
@@ -111,11 +111,22 @@ class NarrativeValidator:
             GameResponse with fallback summary applied if needed.
         """
         proposed_summary = response.updated_story_context.story_summary.strip()
-        if len(proposed_summary) < MIN_SUMMARY_LENGTH:
-            logger.warning(
-                "Proposed story summary is too short (%d chars). Retaining previous summary.",
-                len(proposed_summary),
-            )
+        is_contaminated = (
+            proposed_summary.startswith("*")
+            or proposed_summary.startswith("-")
+            or any(k in proposed_summary for k in ["Role: Editor", "Task: Summarize", "Constraint", "Draft 1:"])
+        )
+
+        if len(proposed_summary) < MIN_SUMMARY_LENGTH or is_contaminated:
+            if is_contaminated:
+                logger.warning(
+                    "Proposed story summary contains thinking/scratchpad contamination. Retaining previous summary."
+                )
+            else:
+                logger.warning(
+                    "Proposed story summary is too short (%d chars). Retaining previous summary.",
+                    len(proposed_summary),
+                )
             new_context = response.updated_story_context.model_copy(
                 update={"story_summary": context.story_summary}
             )

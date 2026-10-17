@@ -186,6 +186,9 @@ class GameEngine:
                     asyncio.to_thread(self.provider.chat, messages),
                     timeout=self.timeout_seconds,
                 )
+                if not raw_output or not raw_output.strip():
+                    error_reason = "Model returned empty or whitespace response."
+                    logger.warning(error_reason)
             except asyncio.TimeoutError:
                 error_reason = f"Model inference timed out (> {self.timeout_seconds:.0f}s)"
                 logger.warning(error_reason)
@@ -288,7 +291,7 @@ class GameEngine:
             raw_output, error_reason = await self.execute_inference(messages, self.context.turn_count)
             latency = time.time() - t0
 
-            if error_reason is None and raw_output:
+            if error_reason is None and raw_output and raw_output.strip():
                 completion_tokens = estimate_tokens(raw_output)
                 self.token_monitor.record_turn(est_prompt_tokens, completion_tokens, latency)
                 self.session_logger.log_response(
@@ -318,7 +321,8 @@ class GameEngine:
                     )
 
             # If we reached here, inference or parsing failed
-            decision, fallback_resp = self.handle_inference_recovery(error_reason or "Unknown error", player_action)
+            display_error = error_reason or "Inference failed to produce a valid response."
+            decision, fallback_resp = self.handle_inference_recovery(display_error, player_action)
             if decision == "retry":
                 t0 = time.time()
                 continue
@@ -348,9 +352,15 @@ class GameEngine:
                     self.provider,
                     player_action,
                     validated_response.narration,
-                    self.context.story_summary,
+                    old_context.story_summary,
                 )
-                if refined and refined != self.context.story_summary:
+                if (
+                    refined
+                    and refined != self.context.story_summary
+                    and not refined.startswith("*")
+                    and not refined.startswith("-")
+                    and len(refined) >= 15
+                ):
                     self.context.story_summary = refined
             except Exception as exc:
                 logger.debug(f"Summary refinement non-fatal error: {exc}")

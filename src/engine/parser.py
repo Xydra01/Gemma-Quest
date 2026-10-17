@@ -30,14 +30,67 @@ class ParseResult:
     is_fallback: bool = False
 
 
+def repair_syntax_quirks(candidate: str) -> str:
+    """Repair common LLM JSON syntax quirks (trailing commas before closures)."""
+    candidate = re.sub(r",\s*\}", "}", candidate)
+    candidate = re.sub(r",\s*\]", "]", candidate)
+    return candidate
+
+
+def repair_truncated_json(text: str) -> Optional[str]:
+    """Attempt to balance unclosed quotes, brackets, and braces in truncated JSON."""
+    start = text.find("{")
+    if start == -1 or '"narration"' not in text[start:]:
+        return None
+    sub = text[start:].strip()
+
+    candidates_to_try = [sub]
+    last_comma = sub.rfind(",")
+    if last_comma != -1:
+        candidates_to_try.append(sub[:last_comma])
+
+    for cand in candidates_to_try:
+        quotes = 0
+        escape = False
+        for c in cand:
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                quotes += 1
+        if quotes % 2 != 0:
+            cand += '"'
+
+        open_brackets = cand.count("[") - cand.count("]")
+        if open_brackets > 0:
+            cand += "]" * open_brackets
+        open_braces = cand.count("{") - cand.count("}")
+        if open_braces > 0:
+            cand += "}" * open_braces
+
+        repaired = repair_syntax_quirks(cand)
+        try:
+            parsed = json.loads(repaired)
+            if isinstance(parsed, dict) and "narration" in parsed:
+                return repaired
+        except Exception:
+            continue
+
+    return None
+
+
 def extract_json_string(raw_text: str) -> Optional[str]:
     """Extract a candidate JSON string from raw LLM output.
 
     Handles:
     - Markdown code fences (```json ... ``` or ``` ... ```)
     - Leading conversational preamble and trailing commentary
-    - Outermost curly brace boundary extraction
+    - Balanced curly brace depth scanning across conversational scratchpads
     - Trailing comma removal before object/array closures
+    - Incomplete/truncated JSON recovery
 
     Args:
         raw_text: Raw response string from the model.
@@ -52,28 +105,85 @@ def extract_json_string(raw_text: str) -> Optional[str]:
 
     # 1. Attempt to extract from markdown code fences if present
     fence_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
-    fence_match = re.search(fence_pattern, text, flags=re.DOTALL | re.IGNORECASE)
-    if fence_match:
-        candidate = fence_match.group(1).strip()
-    else:
-        # 2. Outermost curly brace search
-        start_idx = text.find("{")
-        end_idx = text.rfind("}")
-        if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
-            return None
-        candidate = text[start_idx : end_idx + 1].strip()
+    fence_matches = list(re.finditer(fence_pattern, text, flags=re.DOTALL | re.IGNORECASE))
+    for match in fence_matches:
+        candidate = repair_syntax_quirks(match.group(1).strip())
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return candidate
+        except Exception:
+            pass
 
-    # 3. Repair common JSON syntax quirks (trailing commas before } or ])
-    candidate = re.sub(r",\s*\}", "}", candidate)
-    candidate = re.sub(r",\s*\]", "]", candidate)
+    # 2. Balanced brace depth scan for JSON candidate objects
+    narr_candidate = None
+    fallback_candidate = None
 
-    return candidate
+    for match in re.finditer(r"\{", text):
+        start = match.start()
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = repair_syntax_quirks(text[start : i + 1].strip())
+                        try:
+                            parsed = json.loads(candidate)
+                            if isinstance(parsed, dict):
+                                if "narration" in parsed:
+                                    return candidate
+                                elif "choices" in parsed or "updated_story_context" in parsed:
+                                    if not fallback_candidate:
+                                        fallback_candidate = candidate
+                        except Exception:
+                            pass
+                        break
+
+    if fallback_candidate:
+        return fallback_candidate
+
+    # 3. Fallback: Outermost curly brace search
+    start_idx = text.find("{")
+    end_idx = text.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        candidate = repair_syntax_quirks(text[start_idx : end_idx + 1].strip())
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return candidate
+        except Exception:
+            pass
+
+    # 4. Repair truncated JSON if cut off mid-response
+    repaired = repair_truncated_json(text)
+    if repaired:
+        return repaired
+
+    return None
 
 
 def create_fallback_response(
     raw_text: str, local_context: StoryContext, error_reason: str = ""
 ) -> GameResponse:
-    """Construct a safe, non-crashing GameResponse when parsing fails completely.
+    """Construct a safe, clean, non-crashing GameResponse when parsing fails completely.
+
+    Guarantees that model thinking traces, scratchpad analysis, and raw metadata
+    are never leaked into the player's narration box.
 
     Args:
         raw_text: The raw text that could not be parsed.
@@ -81,28 +191,111 @@ def create_fallback_response(
         error_reason: Diagnostic reason for failure.
 
     Returns:
-        Guaranteed valid GameResponse preserving existing world state.
+        Guaranteed valid GameResponse with clean narration and preserved state.
     """
     logger.warning("Using fallback GameResponse due to parse failure: %s", error_reason)
 
-    # Clean raw text for narration excerpt
-    clean_narration = raw_text.strip()
-    # Strip any markdown fences
-    clean_narration = re.sub(r"```(?:json)?", "", clean_narration).replace("```", "").strip()
+    fallback_context = local_context.model_copy(deep=True)
+    extracted_narration: Optional[str] = None
+    extracted_choices: List[str] = []
 
-    # If completely empty or gibberish, provide a standard descriptive narrative
-    if not clean_narration or len(clean_narration) < 10:
-        clean_narration = (
-            f"You stand in {local_context.current_location}, carefully assessing your options. "
-            f"The environment is quiet."
+    # 1. Fuzzy regex extraction of drafted narration
+    m_narr = re.search(r'\"narration\"\s*:\s*\"([^\"]{15,})\"', raw_text)
+    if m_narr:
+        extracted_narration = m_narr.group(1).strip()
+    else:
+        m_narr2 = re.search(
+            r'(?:Refining\s+)?Narration:?\s*["\']([^"\'\n]{20,})["\']',
+            raw_text,
+            re.IGNORECASE,
+        )
+        if m_narr2:
+            extracted_narration = m_narr2.group(1).strip()
+
+    # 2. Fuzzy regex extraction of drafted choices
+    m_choices = re.search(r'\"choices\"\s*:\s*\[(.*?)\]', raw_text, re.DOTALL)
+    if m_choices:
+        for c in m_choices.group(1).split(","):
+            clean_c = c.strip().strip("\"'").strip()
+            if clean_c and len(clean_c) > 2 and clean_c not in extracted_choices:
+                extracted_choices.append(clean_c)
+
+    if not extracted_choices:
+        m_choices2 = re.search(r'(?:Choices|Choice 1):?\s*([^\n]+)', raw_text, re.IGNORECASE)
+        if m_choices2:
+            raw_c = m_choices2.group(1)
+            for c in re.split(r'\",\s*\"|\',\s*\'|,\s*', raw_c):
+                clean_c = c.strip().strip("\"'").strip()
+                if clean_c and len(clean_c) > 2 and clean_c not in extracted_choices:
+                    extracted_choices.append(clean_c)
+
+    # 3. Fuzzy regex extraction of updated location
+    m_loc = re.search(r'\"current_location\"\s*:\s*\"([^\"]+)\"', raw_text)
+    if not m_loc:
+        m_loc = re.search(r'`current_location`\s*:\s*["\']?([^"\'\n]+)["\']?', raw_text)
+    if m_loc:
+        loc_candidate = m_loc.group(1).strip()
+        if len(loc_candidate) > 2 and not any(k in loc_candidate.lower() for k in ["string", "{", "}", "location"]):
+            fallback_context.current_location = loc_candidate
+
+    # 4. Fuzzy regex extraction of story summary
+    m_sum = re.search(r'\"story_summary\"\s*:\s*\"([^\"]{20,})\"', raw_text)
+    if not m_sum:
+        m_sum = re.search(r'(?:Summary|`story_summary`):\s*["\']?([^"\'\n]{20,})["\']?', raw_text)
+    if m_sum:
+        sum_candidate = m_sum.group(1).strip()
+        is_contaminated = (
+            sum_candidate.startswith("*")
+            or sum_candidate.startswith("-")
+            or any(k in sum_candidate for k in ["Role: Editor", "Task: Summarize", "Constraint", "Draft 1:"])
+        )
+        if len(sum_candidate) > 15 and not is_contaminated:
+            fallback_context.story_summary = sum_candidate
+
+    # 5. Clean narration sanitization: filter out thinking/meta lines
+    if not extracted_narration:
+        thinking_filter_patterns = [
+            r"^\s*\*\s*",
+            r"^\s*-\s*",
+            r"Game Title:", r"Game Name:", r"Player Character:", r"World Setting:",
+            r"Initial Quest:", r"Goal:", r"Constraint", r"Style:", r"Location:",
+            r"Atmosphere:", r"Choice \d+:", r"Choices:", r"Updated Story Context:",
+            r"Coherence:", r"Self-Correction", r"Drafting", r"Double check",
+            r"Final check", r"Valid JSON", r"`narration`", r"`choices`",
+            r"`updated_story_context`", r"Everything looks correct",
+            r"Return ONLY", r"\{", r"\}",
+        ]
+        candidate_lines = []
+        for line in raw_text.splitlines():
+            line_str = line.strip()
+            if not line_str or len(line_str) < 5:
+                continue
+            if any(re.search(pat, line_str, re.IGNORECASE) for pat in thinking_filter_patterns):
+                continue
+            candidate_lines.append(line_str)
+
+        if candidate_lines:
+            extracted_narration = " ".join(candidate_lines).strip()
+
+    # 6. Safety check: if raw_text did not contain thinking metadata, allow original clean text
+    if not extracted_narration:
+        clean_cand = re.sub(r"```(?:json)?", "", raw_text).replace("```", "").strip()
+        if clean_cand and not clean_cand.startswith("*") and "Game Title" not in clean_cand:
+            extracted_narration = clean_cand
+
+    # 7. Final safety check: if still empty or tainted, use contextual fallback
+    if not extracted_narration or len(extracted_narration) < 15 or extracted_narration.startswith("*"):
+        extracted_narration = (
+            f"You stand in {fallback_context.current_location}, taking in your immediate surroundings. "
+            f"The environment is quiet as you consider your next move."
         )
 
-    # Maintain existing story context
-    fallback_context = local_context.model_copy(deep=True)
+    # 8. Final choices validation
+    final_choices = extracted_choices[:4] if (len(extracted_choices) >= 2) else list(DEFAULT_FALLBACK_CHOICES)
 
     return GameResponse(
-        narration=clean_narration,
-        choices=list(DEFAULT_FALLBACK_CHOICES),
+        narration=extracted_narration,
+        choices=final_choices,
         updated_story_context=fallback_context,
     )
 

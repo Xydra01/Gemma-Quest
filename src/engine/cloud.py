@@ -1,6 +1,7 @@
 """Cloud inference provider communicating with remote APIs via HTTPX."""
 
 import logging
+import time
 from typing import Dict, List, Optional
 import httpx
 
@@ -66,9 +67,14 @@ class CloudProvider(InferenceProvider):
         timeout = float(options.get("timeout_seconds", self.timeout_seconds))
 
         if self._is_google_ai():
-            return self._chat_google_ai(messages, temperature, max_tokens, timeout)
+            result = self._chat_google_ai(messages, temperature, max_tokens, timeout)
         else:
-            return self._chat_openai_rest(messages, options, timeout)
+            result = self._chat_openai_rest(messages, options, timeout)
+
+        if not result or not result.strip():
+            raise InferenceError("Cloud provider returned empty or whitespace response.")
+
+        return result
 
     def _chat_google_ai(
         self,
@@ -77,7 +83,7 @@ class CloudProvider(InferenceProvider):
         max_tokens: int,
         timeout: float,
     ) -> str:
-        """Executes completion via Google AI Studio / Gemini API."""
+        """Executes completion via Google AI Studio / Gemini API with retry on server errors."""
         url = self.endpoint or f"{GOOGLE_AI_BASE_URL}/{self.model_id}:generateContent"
         headers = {
             "x-goog-api-key": self.api_key,
@@ -102,25 +108,43 @@ class CloudProvider(InferenceProvider):
         if not contents:
             contents = [{"role": "user", "parts": [{"text": "Continue the story."}]}]
 
+        # Ensure sufficient output token headroom for reasoning models (e.g. Gemma 4)
+        effective_max_tokens = max(max_tokens, 2048)
+
         payload = {
             "contents": contents,
             "generationConfig": {
                 "temperature": temperature,
-                "maxOutputTokens": max_tokens,
+                "maxOutputTokens": effective_max_tokens,
             },
         }
 
         if system_instructions:
             payload["systemInstruction"] = {"parts": system_instructions}
 
-        try:
-            with httpx.Client(timeout=timeout) as client:
-                response = client.post(url, headers=headers, json=payload)
-                return self._handle_response(response, is_google=True)
-        except (httpx.ConnectError, httpx.NetworkError) as e:
-            raise InferenceConnectionError(f"Network error connecting to Google AI API: {e}") from e
-        except httpx.TimeoutException as e:
-            raise InferenceTimeoutError(f"Google AI API request timed out after {timeout}s: {e}") from e
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with httpx.Client(timeout=timeout) as client:
+                    response = client.post(url, headers=headers, json=payload)
+                    if response.status_code in (500, 503) and attempt < max_attempts:
+                        logger.warning(
+                            "Google AI API server error (%d). Retrying (attempt %d/%d)...",
+                            response.status_code,
+                            attempt,
+                            max_attempts,
+                        )
+                        time.sleep(1.0)
+                        continue
+                    return self._handle_response(response, is_google=True)
+            except (httpx.ConnectError, httpx.NetworkError) as e:
+                if attempt < max_attempts:
+                    logger.warning("Network error on Google AI API attempt %d: %s. Retrying...", attempt, e)
+                    time.sleep(1.0)
+                    continue
+                raise InferenceConnectionError(f"Network error connecting to Google AI API: {e}") from e
+            except httpx.TimeoutException as e:
+                raise InferenceTimeoutError(f"Google AI API request timed out after {timeout}s: {e}") from e
 
     def _chat_openai_rest(
         self,
@@ -157,14 +181,48 @@ class CloudProvider(InferenceProvider):
             data = response.json()
 
             if is_google:
-                try:
-                    candidates = data.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        parts = candidates[0]["content"].get("parts", [])
-                        if parts and "text" in parts[0]:
-                            return parts[0]["text"]
-                except Exception as e:
-                    raise InferenceError(f"Failed to parse Google AI response: {e}") from e
+                prompt_feedback = data.get("promptFeedback", {})
+                if prompt_feedback.get("blockReason"):
+                    raise InferenceError(
+                        f"Google AI API blocked prompt: {prompt_feedback.get('blockReason')}"
+                    )
+
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    raise InferenceError("Google AI API returned no candidates.")
+
+                candidate = candidates[0]
+                finish_reason = candidate.get("finishReason", "")
+                if finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
+                    raise InferenceError(
+                        f"Google AI API content generation blocked by safety filters (finishReason: {finish_reason})."
+                    )
+
+                if "content" in candidate:
+                    parts = candidate["content"].get("parts", [])
+                    # Separate non-thought completion parts from internal reasoning/thought parts
+                    non_thought_parts = [
+                        p["text"]
+                        for p in parts
+                        if not p.get("thought", False) and "text" in p
+                    ]
+                    if non_thought_parts:
+                        full_text = "".join(non_thought_parts).strip()
+                        if full_text:
+                            return full_text
+
+                    # Fallback: if only thought parts were emitted
+                    thought_parts = [p["text"] for p in parts if "text" in p]
+                    if thought_parts:
+                        thought_text = "".join(thought_parts).strip()
+                        if finish_reason == "MAX_TOKENS":
+                            logger.warning(
+                                "Google AI model reached maxOutputTokens during internal reasoning."
+                            )
+                        if thought_text:
+                            return thought_text
+
+                raise InferenceError(f"Google AI candidate contained no usable text parts: {candidate}")
 
             # Standard OpenAI / REST schema fallback
             if "choices" in data and data["choices"]:

@@ -12,11 +12,12 @@ RULES:
 2. STYLE: Keep narration atmospheric but concise (max 3 sentences). Write for a terminal interface (short paragraphs, high impact).
 3. CHOICES: Present exactly 2-4 clear narrative choices based on the current situation. Choices must be actionable (e.g., "Open the door", not "Feel sad").
 4. STATE MANAGEMENT: You MUST update the Story Context accurately after each turn. Only add to key_items_held if an item is crucial to the plot. Remove items when they are used or lost.
-5. OUTPUT FORMAT: Your response MUST end with a valid JSON object matching the schema provided below. Do not include markdown code blocks (```json) around the final JSON."""
+5. OUTPUT FORMAT: Respond strictly with a valid JSON object matching the schema below. Wrap the JSON in ```json ... ``` code fences. Do NOT output any thoughts, reasoning, planning, scratchpad analysis, bullet points, or self-corrections."""
 
 
 OUTPUT_FORMAT_SCHEMA = """[OUTPUT FORMAT]
-Return ONLY a valid JSON object with this exact structure:
+Respond ONLY with the JSON object wrapped in markdown code fences:
+```json
 {
   "narration": "string (2-3 sentences of descriptive text)",
   "choices": [
@@ -31,7 +32,8 @@ Return ONLY a valid JSON object with this exact structure:
     "key_items_held": ["item1", "item2"],
     "story_summary": "3-4 sentence summary of what just happened and current plot status"
   }
-}"""
+}
+```"""
 
 
 class PromptBuilder:
@@ -98,7 +100,7 @@ class PromptBuilder:
             f"Recent Story Summary: {context.story_summary}\n\n"
             f"[PLAYER ACTION]\n"
             f"{player_input.strip()}\n\n"
-            f"Remember: Output ONLY the requested JSON object matching the schema."
+            f"Remember: Respond ONLY with the ```json ... ``` code block. Do NOT include any thoughts, analysis, or explanations."
         )
 
     @classmethod

@@ -200,6 +200,26 @@ def test_sync_state_summary_fallback():
     assert new_ctx.story_summary == "You escaped the prison and reached the courtyard."
 
 
+def test_sync_state_rejects_contaminated_summary():
+    """Verify that sync_state rejects model summaries contaminated with thinking traces."""
+    local_ctx = StoryContext(
+        story_summary="Eric fled The Rusty Gate and reached the Roaring Ravine.",
+        turn_count=2,
+    )
+
+    contaminated_ai_resp = GameResponse(
+        narration="Eric waves his branch.",
+        choices=["Run", "Fight"],
+        updated_story_context=StoryContext(
+            story_summary="* Role: Editor for a text adventure game.\n* Task: Summarize in 3 sentences.",
+        ),
+    )
+
+    new_ctx = sync_state(local_ctx, contaminated_ai_resp)
+    assert new_ctx.story_summary == "Eric fled The Rusty Gate and reached the Roaring Ravine."
+    assert not new_ctx.story_summary.startswith("*")
+
+
 def test_save_and_load_roundtrip(tmp_path: Path):
     """Verify atomic saving and loading of game state."""
     save_file = tmp_path / "test_save.json"

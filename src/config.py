@@ -79,7 +79,7 @@ class ContextConfig(BaseModel):
         default=5, description="Turns between automatic summary refinement"
     )
     summary_refinement_char_threshold: int = Field(
-        default=200, description="Summary length triggering refinement"
+        default=450, description="Summary length triggering refinement"
     )
     context_window_warning_ratio: float = Field(
         default=0.8, description="Ratio of 4096 tokens triggering compression"

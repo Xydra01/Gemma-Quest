@@ -11,9 +11,10 @@ from src.state.models import StoryContext
 logger = logging.getLogger(__name__)
 
 REFINEMENT_SYSTEM_PROMPT = """You are an editor for a text adventure game.
-Summarize the following interaction in exactly 3 sentences.
-Focus ONLY on plot changes, new locations, and character status changes.
-Do not include flavor text or dialogue. Output only the summary string."""
+Your task is to update and condense the story summary to exactly 2-3 sentences based on the latest interaction.
+Focus ONLY on plot progression, current location, and character status changes.
+Respond ONLY with the clean 2-3 sentence summary paragraph.
+Do NOT include any thoughts, reasoning, analysis, scratchpad notes, draft iterations, or bullet points."""
 
 
 class SummaryRefiner:
@@ -76,17 +77,18 @@ class SummaryRefiner:
         Args:
             player_input: The player's last action.
             last_narration: Narration output from the turn.
-            current_summary: Current or candidate summary to be condensed.
+            current_summary: Summary of previous events before this turn.
 
         Returns:
             List of message dicts for the LLM.
         """
         user_content = (
-            f"[INPUT INTERACTION]\n"
-            f"Player Action: {player_input.strip()}\n"
-            f"Narration: {last_narration.strip()}\n"
-            f"Current Summary: {current_summary.strip()}\n\n"
-            f"[SUMMARY]"
+            f"[PREVIOUS SUMMARY]\n{current_summary.strip()}\n\n"
+            f"[LATEST TURN]\n"
+            f"Action: {player_input.strip()}\n"
+            f"Narration: {last_narration.strip()}\n\n"
+            f"Condense the updated story into 2-3 clean narrative sentences. "
+            f"Output ONLY the summary paragraph without bullet points or analysis."
         )
 
         return [
@@ -112,7 +114,7 @@ class SummaryRefiner:
             options: Optional override for sampling parameters (defaults to low temp).
 
         Returns:
-            Refined 3-sentence summary string, or current_summary if refinement fails.
+            Refined 2-3 sentence summary string, or current_summary if refinement fails.
         """
         messages = self.build_refinement_messages(
             player_input=player_input,
@@ -122,7 +124,7 @@ class SummaryRefiner:
 
         sampling_opts = {
             "temperature": 0.2,
-            "max_tokens": 512,
+            "max_tokens": 1024,
             "top_p": 0.9,
         }
         if options:
@@ -132,11 +134,11 @@ class SummaryRefiner:
             raw_response = provider.chat(messages, options=sampling_opts)
             cleaned = self._clean_summary_output(raw_response)
 
-            # Heuristic safeguard: must be non-empty and minimum length
-            if not cleaned or len(cleaned) < 15:
+            # Heuristic safeguard: must be non-empty, minimum length, and free of thinking artifacts
+            if not cleaned or len(cleaned) < 15 or cleaned.startswith("*") or cleaned.startswith("-"):
                 logger.warning(
-                    "Refinement output too short or empty ('%s'); retaining previous summary.",
-                    cleaned,
+                    "Refinement output invalid or pure thinking ('%s'); retaining previous summary.",
+                    cleaned[:80] if cleaned else "EMPTY",
                 )
                 return current_summary
 
@@ -148,7 +150,7 @@ class SummaryRefiner:
 
     @staticmethod
     def _clean_summary_output(raw_text: str) -> str:
-        """Strip markdown code blocks, prefixes, and extraneous formatting."""
+        """Strip markdown code blocks, prefixes, thought traces, and extraneous formatting."""
         if not raw_text:
             return ""
 
@@ -166,12 +168,33 @@ class SummaryRefiner:
         # Remove any leading [SUMMARY] label
         text = re.sub(r"^\[SUMMARY\]\s*", "", text, flags=re.IGNORECASE).strip()
 
-        # If model thinking output leaked into text without completing
-        if text.startswith("1. **") or text.startswith("**Analyze"):
-            return ""
-
         # Strip surrounding double or single quotes
         if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
             text = text[1:-1].strip()
 
-        return text
+        # Check if the text contains an explicit draft label (e.g. "*Revised Draft:*" or "Summary:")
+        draft_match = re.search(r'(?:Revised Draft|Final Summary|Summary):\s*([^\n*]+)', text, re.IGNORECASE)
+        if draft_match:
+            candidate = draft_match.group(1).strip()
+            if len(candidate) > 20 and not candidate.startswith("*") and not candidate.startswith("-"):
+                return candidate
+
+        # Filter out reasoning bullet points / meta-language
+        scratchpad_markers = (
+            "*", "-", "1.", "2.", "3.", "Role:", "Task:", "Focus:", "Constraint",
+            "Exclusions:", "Player Action:", "Narration:", "Current Summary:",
+            "Wait", "Let's", "Revised Draft:", "Drafting Sentences:", "Interaction:",
+        )
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        non_bullet_lines = []
+        for line in lines:
+            if any(line.startswith(marker) or line.lower().startswith(marker.lower()) for marker in scratchpad_markers):
+                continue
+            non_bullet_lines.append(line)
+
+        if non_bullet_lines:
+            candidate = " ".join(non_bullet_lines).strip()
+            if len(candidate) > 20 and not candidate.startswith("*") and not candidate.startswith("-"):
+                return candidate
+
+        return ""

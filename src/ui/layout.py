@@ -113,7 +113,8 @@ def render_status_panel(
     table.add_row("[KEY ITEMS]", items_text)
 
     # Subtitle with recent rolling summary
-    summary_subtitle = f"[dim grey]Memory: {context.story_summary}[/dim grey]"
+    clean_summary = " ".join(context.story_summary.split()) if context.story_summary else "Beginning adventure..."
+    summary_subtitle = f"[dim grey]Memory: {clean_summary}[/dim grey]"
 
     return Panel(
         table,
