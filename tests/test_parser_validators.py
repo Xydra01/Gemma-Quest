@@ -289,3 +289,66 @@ def test_narrative_validator_summary_and_location_fallback():
     validated = NarrativeValidator.validate_response(candidate, context)
     assert validated.updated_story_context.current_location == "Deep Crypt"
     assert validated.updated_story_context.story_summary == "You entered the crypt looking for the sacred amulet."
+
+
+def test_extract_json_string_with_model_thinking_monologue():
+    """Verify that model scratchpad/thinking text with multiple braces is bypassed in favor of the real JSON."""
+    raw_output = """
+    * Game Title: Gemma Dungeon (Retro Text Adventure).
+    * Player Character: Eric.
+    * World Setting: Fantasy.
+    * Constraint: Output must be ONLY a JSON object.
+    * `active_characters`: {"Eric": "Alive"}
+    * `updated_story_context`: { ... }
+
+    *Drafting JSON content*:
+    {
+      "narration": "Salt stings your eyes as you awaken on the cold beach.",
+      "choices": [
+        "Search the wreckage for supplies",
+        "Check yourself for injuries"
+      ],
+      "updated_story_context": {
+        "current_location": "Sun-bleached Shoreline",
+        "active_characters": {"Eric": "Alive"},
+        "key_items_held": [],
+        "story_summary": "Eric washed ashore next to a shipwreck."
+      }
+    }
+
+    *Double check length*:
+    Everything looks correct.
+    """
+    extracted = extract_json_string(raw_output)
+    assert extracted is not None
+    data = json.loads(extracted)
+    assert data["narration"] == "Salt stings your eyes as you awaken on the cold beach."
+    assert data["updated_story_context"]["current_location"] == "Sun-bleached Shoreline"
+    assert len(data["choices"]) == 2
+
+
+def test_create_fallback_response_strips_thinking_monologue():
+    """Verify that when parsing fails completely, thinking bullet points are never placed into narration."""
+    raw_thinking = """
+    * Game Name: Gemma Dungeon.
+    * Current Location: The Rusty Gate
+    * Tone: Dark Fantasy.
+    * Refining Narration: "Jagged timber and salt-crusted debris litter the shoreline."
+    * Choices: "Scavenge the wreckage", "Walk along the tide line"
+    * Updated Story Context:
+        * `current_location`: The Shipwrecked Beach
+    * Drafting JSON:
+    {
+      "narration": "Jagged timber and salt-crusted debris litter the shoreline.",
+      "choices": [
+    """
+    ctx = StoryContext(current_location="The Rusty Gate", story_summary="Arrived at gate.")
+    fallback = create_fallback_response(raw_thinking, ctx, "Truncated output")
+
+    # Narration should be clean and NOT start with bullet points or contain planning metadata
+    assert not fallback.narration.startswith("*")
+    assert "Game Name" not in fallback.narration
+    assert "Drafting JSON" not in fallback.narration
+    assert "Jagged timber and salt-crusted debris litter the shoreline." in fallback.narration
+    assert fallback.updated_story_context.current_location == "The Shipwrecked Beach"
+    assert len(fallback.choices) >= 2
