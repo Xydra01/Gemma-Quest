@@ -106,7 +106,8 @@ class VisualizerConfig(BaseModel):
         default="auto", description="Image generation backend"
     )
     model: str = Field(
-        default="imagen-3.0-generate-002", description="Image generation model identifier"
+        default="gemini-2.5-flash-image",
+        description="Image generation model identifier",
     )
     project_id: Optional[str] = Field(
         default=None,

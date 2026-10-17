@@ -102,8 +102,9 @@ class TestSceneVisualizer:
         assert result is None
 
     def test_fallback_when_offline_or_unauthenticated(self, test_config: GameConfig):
-        # Without GCP project or API key, should gracefully return FALLBACK_ASCII_SCENE
+        # When client is None (unauthenticated or offline), gracefully return FALLBACK_ASCII_SCENE
         viz = SceneVisualizer(test_config)
+        viz._get_client = MagicMock(return_value=None)
         result = viz.generate_scene_art(
             narration="A stormy castle gate stands open.",
             location="Castle Gate",

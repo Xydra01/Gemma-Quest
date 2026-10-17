@@ -49,8 +49,8 @@ visualizer:
   enabled: true
   # Backend: 'auto', 'vertex_ai' (uses ADC/project), or 'ai_studio'
   backend: "auto"
-  # Image generation model (Imagen 3 on Vertex AI)
-  model: "imagen-3.0-generate-002"
+  # Image generation model on Vertex AI
+  model: "gemini-2.5-flash-image"
   # Google Cloud Project ID (optional if set in GOOGLE_CLOUD_PROJECT env var)
   project_id: null
   # Google Cloud region
