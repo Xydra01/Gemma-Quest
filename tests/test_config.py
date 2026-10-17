@@ -35,7 +35,7 @@ def test_default_config_loading():
     assert config.app.name == "Gemma Dungeon"
     assert config.app.theme == "retro"
     assert config.llm.mode == "local"
-    assert config.llm.local_model == "gemma4:2b-q4_0"
+    assert config.llm.local_model == "gemma4:e4b"
     assert config.llm.temperature == 0.8
     assert config.resilience.circuit_breaker_threshold == 3
     assert config.context.summary_refinement_turn_interval == 5

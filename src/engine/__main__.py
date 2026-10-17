@@ -93,7 +93,7 @@ def main():
 
         start_time = time.time()
         try:
-            response_text = active_prov.chat(test_messages, {"max_tokens": 50, "temperature": 0.7})
+            response_text = active_prov.chat(test_messages, {"max_tokens": 256, "temperature": 0.7})
             duration = time.time() - start_time
             console.print(
                 Panel(

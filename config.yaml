@@ -8,7 +8,7 @@ llm:
   mode: "local"
 
   # Local settings (Ollama)
-  local_model: "gemma4:2b-q4_0"
+  local_model: "gemma4:e4b"
   ollama_base_url: "http://localhost:11434"
 
   # Cloud settings (Used if mode is cloud or hybrid)
@@ -22,7 +22,7 @@ llm:
   top_p: 0.9
   top_k: 50
   max_tokens: 1024
-  timeout_seconds: 30
+  timeout_seconds: 60
 
 resilience:
   # Hybrid fallback timeout (seconds before falling back to local provider)

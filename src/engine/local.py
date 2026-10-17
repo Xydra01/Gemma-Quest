@@ -64,7 +64,16 @@ class LocalProvider(InferenceProvider):
                 messages=messages,
                 options=ollama_options,
             )
-            return response["message"]["content"]
+            if hasattr(response, "message"):
+                msg = response.message
+                content = getattr(msg, "content", "") or ""
+                if not content and hasattr(msg, "thinking") and msg.thinking:
+                    content = msg.thinking
+                return content
+            elif isinstance(response, dict):
+                msg_dict = response.get("message", {})
+                return msg_dict.get("content", "") or msg_dict.get("thinking", "")
+            return str(response)
 
         except (httpx.ConnectError, ConnectionError, ollama.RequestError) as e:
             raise InferenceConnectionError(
