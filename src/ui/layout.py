@@ -1,0 +1,244 @@
+"""Layout renderers, panel builders, and retro screen components."""
+
+from typing import List, Optional
+from rich import box
+from rich.box import Box
+from rich.panel import Panel
+from rich.table import Table
+
+from src.state.models import CharacterStatus, StoryContext
+
+TITLE_ART = r"""
+ ██████╗ ███████╗███╗   ███╗███╗   ███╗ █████╗ 
+██╔════╝ ██╔════╝████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗█████╗  ██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══╝  ██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝███████╗██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+          -- D U N G E O N --
+"""
+
+GAME_OVER_ART = r"""
+  ██████╗  █████╗ ███╗   ███╗███████╗     ██████╗ ██╗   ██╗███████╗██████╗ 
+ ██╔════╝ ██╔══██╗████╗ ████║██╔════╝    ██╔═══██╗██║   ██║██╔════╝██╔══██╗
+ ██║  ███╗███████║██╔████╔██║█████╗      ██║   ██║██║   ██║█████╗  ██████╔╝
+ ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝      ██║   ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗
+ ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗    ╚██████╔╝ ╚████╔╝ ███████╗██║  ██║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝     ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝
+"""
+
+
+def render_header(
+    title: str = "GEMMA DUNGEON v1.0",
+    turn_count: int = 0,
+    provider_status: str = "[LOCAL: Ollama]",
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the top header bar with title, turn counter, and inference status badge.
+
+    Args:
+        title: Game title string.
+        turn_count: Current turn number.
+        provider_status: Status badge from InferenceProvider (e.g. [LOCAL: gemma4:e2b]).
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Header Panel.
+    """
+    header_table = Table.grid(expand=True)
+    header_table.add_column(justify="left", ratio=3)
+    header_table.add_column(justify="center", ratio=2)
+    header_table.add_column(justify="right", ratio=3)
+
+    title_part = f"[bold yellow]{title}[/bold yellow]"
+    turn_part = f"[bold yellow]Turn:[/] [bright_green]{turn_count}[/bright_green]"
+    provider_part = f"[dim grey]{provider_status}[/dim grey]"
+
+    header_table.add_row(title_part, turn_part, provider_part)
+
+    return Panel(
+        header_table,
+        box=box_style,
+        border_style="bold yellow",
+        padding=(0, 1),
+    )
+
+
+def render_status_panel(
+    context: StoryContext,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the status monitor panel displaying location, characters, and items.
+
+    Args:
+        context: Current authoritative StoryContext.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Status Panel.
+    """
+    table = Table.grid(expand=True, padding=(0, 1))
+    table.add_column(style="bold yellow", width=14)
+    table.add_column(style="bright_green")
+
+    # 1. Location & Tone
+    table.add_row("[LOCATION]", f"[bold yellow]{context.current_location}[/bold yellow]")
+    if context.world_tone:
+        table.add_row("[WORLD TONE]", f"[dim grey]{context.world_tone}[/dim grey]")
+
+    # 2. Active Characters with status styling
+    if context.active_characters:
+        char_entries = []
+        for name, status in context.active_characters.items():
+            st_val = status.value if hasattr(status, "value") else str(status)
+            if status == CharacterStatus.DEAD:
+                tag = "bold red"
+            elif status == CharacterStatus.HOSTILE:
+                tag = "bold yellow"
+            elif status == CharacterStatus.ALLY:
+                tag = "bold cyan"
+            else:
+                tag = "bright_green"
+            char_entries.append(f"[{tag}]{name} ({st_val})[/{tag}]")
+        chars_text = ", ".join(char_entries)
+    else:
+        chars_text = "[dim grey]None[/dim grey]"
+    table.add_row("[CHARACTERS]", chars_text)
+
+    # 3. Key Items Held
+    if context.key_items_held:
+        items_text = ", ".join(f"[white]{item}[/white]" for item in context.key_items_held)
+    else:
+        items_text = "[dim grey]None[/dim grey]"
+    table.add_row("[KEY ITEMS]", items_text)
+
+    # Subtitle with recent rolling summary
+    summary_subtitle = f"[dim grey]Memory: {context.story_summary}[/dim grey]"
+
+    return Panel(
+        table,
+        box=box_style,
+        title="[bold yellow]GAME STATUS[/bold yellow]",
+        subtitle=summary_subtitle,
+        border_style="bright_green",
+        padding=(0, 1),
+    )
+
+
+def render_narrative_panel(
+    narration: str,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the main narrative descriptive text panel.
+
+    Args:
+        narration: Story description text from model or narrator.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Narrative Panel.
+    """
+    clean_text = narration.strip() if narration else "[dim grey]The dungeon is silent.[/dim grey]"
+
+    return Panel(
+        f"[bright_green]{clean_text}[/bright_green]",
+        box=box_style,
+        title="[bold yellow]NARRATION[/bold yellow]",
+        border_style="bright_green",
+        padding=(1, 2),
+    )
+
+
+def render_choices_panel(
+    choices: List[str],
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the numbered interactive choices panel.
+
+    Args:
+        choices: List of 2 to 4 action strings.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Choices Panel.
+    """
+    lines = []
+    for i, choice in enumerate(choices, 1):
+        clean_choice = choice.strip()
+        if clean_choice.startswith(f"[{i}]"):
+            clean_choice = clean_choice[len(f"[{i}]"):].strip()
+        elif clean_choice.startswith(f"{i}."):
+            clean_choice = clean_choice[len(f"{i}."):].strip()
+
+        lines.append(
+            f"[bold #80FF80][{i}][/bold #80FF80] [white]{clean_choice}[/white]"
+        )
+
+    lines.append("")
+    lines.append("[dim grey][0] Free-form: type any custom action...[/dim grey]")
+
+    return Panel(
+        "\n".join(lines),
+        box=box_style,
+        title="[bold yellow]ACTIONS[/bold yellow]",
+        border_style="bold #80FF80",
+        padding=(0, 2),
+    )
+
+
+def render_game_over_screen(
+    context: StoryContext,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the Game Over dramatic death or conclusion screen.
+
+    Args:
+        context: Final StoryContext.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Game Over Panel.
+    """
+    content = [
+        f"[bold red]{GAME_OVER_ART.strip()}[/bold red]",
+        "",
+        f"[bold yellow]Your quest came to an end in {context.current_location}.[/bold yellow]",
+        f"[dim grey]Turns Survived: {context.turn_count}[/dim grey]",
+        "",
+        f"[bright_green]Final Tale: {context.story_summary}[/bright_green]",
+        "",
+        "[dim grey]Press [bold]Q[/bold] to quit or [bold]R[/bold] to restart a new adventure.[/dim grey]",
+    ]
+
+    return Panel(
+        "\n".join(content),
+        box=box_style,
+        border_style="bold red",
+        padding=(1, 2),
+    )
+
+
+def render_title_splash(
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the opening title splash screen.
+
+    Args:
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Splash Title Panel.
+    """
+    content = [
+        f"[bright_green]{TITLE_ART.strip()}[/bright_green]",
+        "",
+        "[bold yellow]A Retro 1980s Text Adventure powered by Gemma 4[/bold yellow]",
+        "[dim grey]Strict Coherence • Context-First Memory • Terminal Aesthetics[/dim grey]",
+    ]
+
+    return Panel(
+        "\n".join(content),
+        box=box_style,
+        border_style="bold yellow",
+        padding=(1, 2),
+    )
