@@ -1,0 +1,18 @@
+settings:
+  fantasy:
+    name: "Dark Fantasy"
+    description: "A mist-shrouded medieval kingdom where ancient magic is fading and shadows stir in ruined towers."
+    default_goal: "Find a way out of the dungeon catacombs."
+    starter_location: "The Rusty Gate"
+
+  scifi:
+    name: "Sci-Fi Void"
+    description: "A sprawling space station drifting in the cold void of a dying star system with failing life support."
+    default_goal: "Restore auxiliary power to the comms array."
+    starter_location: "Airlock Bay 4"
+
+  cyberpunk:
+    name: "Cyberpunk Metropolis"
+    description: "A neon-drenched metropolis drenched in acid rain, ruled by ruthless megacorporations and rogue synth syndicates."
+    default_goal: "Deliver the encrypted data shard before your cyberware is traced."
+    starter_location: "Neon Alley Underpass"
