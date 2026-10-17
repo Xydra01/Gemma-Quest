@@ -8,7 +8,7 @@ llm:
   mode: "local"
 
   # Local settings (Ollama)
-  local_model: "gemma4:e4b"
+  local_model: "gemma4:e2b"
   ollama_base_url: "http://localhost:11434"
 
   # Cloud settings (Used if mode is cloud or hybrid)

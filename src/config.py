@@ -26,7 +26,7 @@ class LLMConfig(BaseModel):
         default="local", description="Inference mode: 'local', 'cloud', or 'hybrid'"
     )
     local_model: str = Field(
-        default="gemma4:e4b", description="Ollama model identifier"
+        default="gemma4:e2b", description="Ollama model identifier"
     )
     ollama_base_url: str = Field(
         default="http://localhost:11434", description="Base URL for local Ollama server"
