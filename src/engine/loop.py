@@ -23,6 +23,7 @@ from src.engine.token_monitor import (
     estimate_tokens,
 )
 from src.engine.validator import NarrativeValidator
+from src.engine.visualizer import SceneVisualizer
 from src.state.models import CharacterStatus, GameResponse, StoryContext
 from src.state.sync import sync_state
 from src.ui.input_engine import ActionPayload, InputEngine, InputType
@@ -108,6 +109,7 @@ class GameEngine:
         session_logger: Optional[SessionLogger] = None,
         token_monitor: Optional[TokenMonitor] = None,
         context_guard: Optional[ContextGuard] = None,
+        visualizer: Optional[SceneVisualizer] = None,
     ):
         """Initialize the game engine with required pipeline components.
 
@@ -125,6 +127,7 @@ class GameEngine:
             session_logger: Optional SessionLogger for recording debug_log.txt.
             token_monitor: Optional TokenMonitor for tracking token metrics.
             context_guard: Optional ContextGuard for memory and NPC protection.
+            visualizer: Optional SceneVisualizer for ANSI/ASCII scene illustration.
         """
         self.config = config or load_config()
         self.provider = provider
@@ -146,6 +149,7 @@ class GameEngine:
             config=context_cfg,
             context_limit=4096,
         )
+        self.visualizer = visualizer or SceneVisualizer(self.config)
 
         self.context: Optional[StoryContext] = None
         self.current_response: Optional[GameResponse] = None
@@ -404,7 +408,23 @@ class GameEngine:
                     return "restart"
                 return "game_over"
 
-            # Render current 3-zone game frame
+            # Generate or retrieve cached scene illustration
+            scene_art = None
+            vis_cfg = getattr(self.config, "visualizer", None)
+            is_enabled = getattr(vis_cfg, "enabled", True) if vis_cfg is not None else True
+            if self.visualizer and is_enabled:
+                try:
+                    scene_art = await asyncio.to_thread(
+                        self.visualizer.generate_scene_art,
+                        narration=self.current_response.narration,
+                        location=self.context.current_location,
+                        world_tone=self.context.world_tone,
+                    )
+                except Exception as exc:
+                    logger.debug(f"Visualizer error (non-fatal): {exc}")
+                    scene_art = None
+
+            # Render current 4-zone game frame
             provider_badge = (
                 self.provider.get_status()
                 if hasattr(self.provider, "get_status")
@@ -415,6 +435,7 @@ class GameEngine:
                 narration=self.current_response.narration,
                 choices=self.current_response.choices,
                 provider_status=provider_badge,
+                visual_art=scene_art,
             )
 
             # Capture player action or command

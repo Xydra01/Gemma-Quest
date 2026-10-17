@@ -73,6 +73,24 @@ def parse_args() -> argparse.Namespace:
         help="Path to diagnostic session log (default: debug_log.txt)",
     )
     parser.add_argument(
+        "--no-visuals",
+        action="store_true",
+        default=False,
+        help="Disable retro pixel art and ASCII scene illustrations",
+    )
+    parser.add_argument(
+        "--visual-style",
+        choices=["pixel_art", "ascii", "monochrome"],
+        default=None,
+        help="Visual scene rendering style ('pixel_art', 'ascii', or 'monochrome')",
+    )
+    parser.add_argument(
+        "--visual-model",
+        type=str,
+        default=None,
+        help="Image generation model override (e.g. imagen-3.0-generate-002)",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         default=False,
@@ -129,6 +147,17 @@ async def run_adventure(args: argparse.Namespace) -> None:
             config.llm.cloud_model_id = args.model
         else:
             config.llm.local_model = args.model
+
+    if args.no_visuals:
+        config.visualizer.enabled = False
+    if args.visual_style:
+        config.visualizer.style = args.visual_style
+    elif args.monochrome:
+        config.visualizer.style = "monochrome"
+    elif args.ascii:
+        config.visualizer.style = "ascii"
+    if args.visual_model:
+        config.visualizer.model = args.visual_model
 
     # 2. Initialize TUI & Input Engine
     tui = RetroTUI(

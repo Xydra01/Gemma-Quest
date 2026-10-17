@@ -92,6 +92,40 @@ class ContextConfig(BaseModel):
     )
 
 
+class VisualizerConfig(BaseModel):
+    """Scene visualizer and ANSI pixel art generation settings."""
+
+    enabled: bool = Field(
+        default=True, description="Enable visual scene rendering in the TUI"
+    )
+    backend: Literal["auto", "vertex_ai", "ai_studio"] = Field(
+        default="auto", description="Image generation backend"
+    )
+    model: str = Field(
+        default="imagen-3.0-generate-002", description="Image generation model identifier"
+    )
+    project_id: Optional[str] = Field(
+        default=None,
+        description="Google Cloud Project ID for Vertex AI (falls back to GOOGLE_CLOUD_PROJECT)",
+    )
+    location: str = Field(
+        default="us-central1", description="Google Cloud Region for Vertex AI"
+    )
+    style: Literal["pixel_art", "ascii", "monochrome"] = Field(
+        default="pixel_art",
+        description="Rendering style: 'pixel_art' (TrueColor ANSI), 'ascii', or 'monochrome'",
+    )
+    width: int = Field(
+        default=60, ge=20, le=120, description="Visualizer character width"
+    )
+    height: int = Field(
+        default=18, ge=6, le=40, description="Visualizer character height"
+    )
+    cache_dir: str = Field(
+        default="data/cache/scenes", description="Directory to cache generated images"
+    )
+
+
 class SettingTemplate(BaseModel):
     """Predefined setting definition for onboarding."""
 
@@ -108,6 +142,7 @@ class GameConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     resilience: ResilienceConfig = Field(default_factory=ResilienceConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
+    visualizer: VisualizerConfig = Field(default_factory=VisualizerConfig)
 
 
 def load_config(config_path: Optional[str | Path] = None) -> GameConfig:
@@ -140,6 +175,21 @@ def load_config(config_path: Optional[str | Path] = None) -> GameConfig:
     env_endpoint = os.getenv("GEMMA_CLOUD_ENDPOINT")
     if env_endpoint:
         config_data.setdefault("llm", {})["cloud_endpoint"] = env_endpoint
+
+    # Visualizer environment variable overrides
+    vis_data = config_data.setdefault("visualizer", {})
+    if os.getenv("GOOGLE_CLOUD_PROJECT"):
+        vis_data["project_id"] = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if os.getenv("GOOGLE_CLOUD_LOCATION"):
+        vis_data["location"] = os.getenv("GOOGLE_CLOUD_LOCATION")
+    if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes"):
+        vis_data["backend"] = "vertex_ai"
+    if os.getenv("GEMMA_VISUALS_ENABLED"):
+        vis_data["enabled"] = os.getenv("GEMMA_VISUALS_ENABLED", "").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
     return GameConfig(**config_data)
 

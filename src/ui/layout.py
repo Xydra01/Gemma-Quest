@@ -126,6 +126,35 @@ def render_status_panel(
     )
 
 
+def render_scene_panel(
+    visual_art: str,
+    title: str = "SCENE ILLUSTRATION",
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render the retro pixel art / ASCII scene illustration panel.
+
+    Args:
+        visual_art: Pre-formatted ANSI TrueColor half-blocks or ASCII art string.
+        title: Title banner for the panel.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Scene Illustration Panel.
+    """
+    from rich.text import Text
+
+    clean_art = visual_art.strip("\r\n") if visual_art else ""
+    rich_content = Text.from_ansi(clean_art, no_wrap=True)
+
+    return Panel(
+        rich_content,
+        box=box_style,
+        title=f"[bold yellow]{title}[/bold yellow]",
+        border_style="yellow",
+        padding=(0, 1),
+    )
+
+
 def render_narrative_panel(
     narration: str,
     box_style: Box = box.HEAVY,

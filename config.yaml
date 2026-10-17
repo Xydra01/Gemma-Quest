@@ -43,3 +43,23 @@ context:
   max_active_npcs: 10
   # Number of turns dead or inactive NPCs remain before pruning
   npc_prune_turn_threshold: 10
+
+visualizer:
+  # Enable scene illustration panel in TUI
+  enabled: true
+  # Backend: 'auto', 'vertex_ai' (uses ADC/project), or 'ai_studio'
+  backend: "auto"
+  # Image generation model (Imagen 3 on Vertex AI)
+  model: "imagen-3.0-generate-002"
+  # Google Cloud Project ID (optional if set in GOOGLE_CLOUD_PROJECT env var)
+  project_id: null
+  # Google Cloud region
+  location: "us-central1"
+  # Visual style: 'pixel_art' (24-bit TrueColor ANSI half-blocks), 'ascii', or 'monochrome'
+  style: "pixel_art"
+  # Target dimensions in characters
+  width: 60
+  height: 18
+  # Local disk cache directory for generated scenes
+  cache_dir: "data/cache/scenes"
+

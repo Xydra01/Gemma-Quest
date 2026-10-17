@@ -11,6 +11,7 @@ from src.ui.layout import (
     render_game_over_screen,
     render_header,
     render_narrative_panel,
+    render_scene_panel,
     render_status_panel,
     render_title_splash,
 )
@@ -75,14 +76,16 @@ class RetroTUI:
         provider_status: str = "[LOCAL: Ollama]",
         title: str = "GEMMA DUNGEON v1.0",
         soft_clear: bool = False,
+        visual_art: Optional[str] = None,
     ) -> None:
-        """Render a complete coordinated 3-zone game frame.
+        """Render a complete coordinated 4-zone game frame.
 
         Zones rendered:
         1. Header bar with game title, turn count, and provider status badge.
         2. Status panel with location, tone, active characters, and key items.
-        3. Narrative panel with story description.
-        4. Choices panel with numbered actions and free-form indicator.
+        3. Scene illustration panel with ANSI / ASCII artwork (if available).
+        4. Narrative panel with story description.
+        5. Choices panel with numbered actions and free-form indicator.
 
         Args:
             context: Current authoritative StoryContext.
@@ -91,6 +94,7 @@ class RetroTUI:
             provider_status: Active inference provider status badge.
             title: Title text for the header.
             soft_clear: If True, adds vertical spacing before rendering.
+            visual_art: Optional ANSI TrueColor half-blocks or ASCII scene art.
         """
         if soft_clear:
             self.clear_screen(soft=True)
@@ -107,6 +111,8 @@ class RetroTUI:
 
         self.console.print(header)
         self.console.print(status)
+        if visual_art:
+            self.console.print(render_scene_panel(visual_art, box_style=self.box_style))
         self.console.print(narrative)
         self.console.print(actions)
 
