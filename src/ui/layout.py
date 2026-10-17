@@ -242,3 +242,45 @@ def render_title_splash(
         border_style="bold yellow",
         padding=(1, 2),
     )
+
+
+def render_settings_menu(
+    templates: dict,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render formatted menu of available world setting archetypes.
+
+    Args:
+        templates: Dictionary mapping setting keys to SettingTemplate objects.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Table panel showing options [1] to [4].
+    """
+    table = Table(
+        show_header=False,
+        box=box.SIMPLE,
+        expand=True,
+        padding=(0, 1),
+    )
+    table.add_column("Key", style="bold #80FF80", width=6)
+    table.add_column("Setting", style="bold yellow", width=22)
+    table.add_column("Description", style="bright_green")
+
+    f_desc = getattr(templates.get("fantasy"), "description", "A medieval kingdom where magic is fading.")
+    s_desc = getattr(templates.get("scifi"), "description", "A drifting space station with failing life support.")
+    c_desc = getattr(templates.get("cyberpunk"), "description", "A neon-drenched metropolis ruled by megacorps.")
+
+    table.add_row("[1]", "Fantasy", f_desc)
+    table.add_row("[2]", "Sci-Fi", s_desc)
+    table.add_row("[3]", "Cyberpunk", c_desc)
+    table.add_row("[4]", "Custom", "Create your own unique setting, tone, and opening premise.")
+
+    return Panel(
+        table,
+        box=box_style,
+        title="[bold yellow]AVAILABLE WORLD SETTINGS[/bold yellow]",
+        border_style="bright_green",
+        padding=(0, 1),
+    )
+

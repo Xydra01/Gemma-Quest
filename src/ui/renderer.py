@@ -161,3 +161,25 @@ class RetroTUI:
         except ValueError:
             # Player entered free-form text
             return raw_input
+
+    def run_onboarding(
+        self,
+        input_func=input,
+        show_boot: bool = False,
+    ):
+        """Execute the interactive player onboarding sequence.
+
+        Args:
+            input_func: Callable providing player inputs.
+            show_boot: If True, renders atmospheric DOS boot lines.
+
+        Returns:
+            Validated PlayerSetup object.
+        """
+        from src.ui.onboarding import OnboardingFlow
+
+        flow = OnboardingFlow(console=self.console)
+        if show_boot:
+            flow.render_boot_sequence()
+
+        return flow.run(input_func=input_func)

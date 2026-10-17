@@ -11,6 +11,11 @@ from .base import (
 from .cloud import CloudProvider
 from .factory import LLMFactory
 from .hybrid import HybridWrapper
+from .initializer import (
+    OpeningSceneGenerator,
+    create_initial_context,
+    create_starter_fallback_response,
+)
 from .local import LocalProvider
 from .parser import (
     ParseResult,
@@ -40,4 +45,7 @@ __all__ = [
     "NarrativeValidator",
     "extract_json_string",
     "create_fallback_response",
+    "OpeningSceneGenerator",
+    "create_initial_context",
+    "create_starter_fallback_response",
 ]
