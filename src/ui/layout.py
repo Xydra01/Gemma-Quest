@@ -284,3 +284,131 @@ def render_settings_menu(
         padding=(0, 1),
     )
 
+
+def render_help_panel(
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render in-game help menu and player command reference.
+
+    Args:
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Help Panel.
+    """
+    table = Table(
+        show_header=False,
+        box=box.SIMPLE,
+        expand=True,
+        padding=(0, 1),
+    )
+    table.add_column("Input", style="bold #80FF80", width=18)
+    table.add_column("Action", style="bright_green")
+
+    table.add_row("[1] - [4]", "Select one of the numbered narrative choices.")
+    table.add_row("Custom Text", "Type any custom free-form action (e.g. 'search the chest').")
+    table.add_row("<Enter>", "Empty input defaults to [WAIT] (observe surroundings).")
+    table.add_row("/status, /inv", "View detailed player context, full inventory, and memory.")
+    table.add_row("/help", "Display this commands reference menu.")
+    table.add_row("/restart", "Restart the adventure and character setup from scratch.")
+    table.add_row("/quit, /exit", "Exit Gemma-Quest safely.")
+
+    return Panel(
+        table,
+        box=box_style,
+        title="[bold yellow]COMMANDS & CONTROLS[/bold yellow]",
+        border_style="bold yellow",
+        padding=(0, 1),
+    )
+
+
+def render_detailed_status(
+    context: StoryContext,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render full detailed story context inspection panel.
+
+    Args:
+        context: Current authoritative StoryContext.
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Detailed Status Panel.
+    """
+    lines = [
+        f"[bold yellow]Current Turn:[/] [bright_green]{context.turn_count}[/bright_green]",
+        f"[bold yellow]Location:[/]     [white]{context.current_location}[/white]",
+    ]
+    if context.world_tone:
+        lines.append(f"[bold yellow]World Tone:[/]   [dim grey]{context.world_tone}[/dim grey]")
+
+    # Inventory
+    lines.append("")
+    lines.append("[bold yellow]Inventory:[/] ")
+    if context.key_items_held:
+        for item in context.key_items_held:
+            lines.append(f"  • [white]{item}[/white]")
+    else:
+        lines.append("  [dim grey](Empty)[/dim grey]")
+
+    # Active Characters
+    lines.append("")
+    lines.append("[bold yellow]Characters Met:[/] ")
+    if context.active_characters:
+        for name, status in context.active_characters.items():
+            st_val = status.value if hasattr(status, "value") else str(status)
+            color = "bright_green"
+            if str(st_val).upper() == "DEAD":
+                color = "bold red"
+            elif str(st_val).upper() == "HOSTILE":
+                color = "bold yellow"
+            elif str(st_val).upper() == "ALLY":
+                color = "bold cyan"
+            lines.append(f"  • [white]{name}[/white] - [{color}]{st_val}[/{color}]")
+    else:
+        lines.append("  [dim grey](None encountered yet)[/dim grey]")
+
+    # Memory Summary
+    lines.append("")
+    lines.append(f"[bold yellow]Recent Story Memory:[/] \n[dim grey]{context.story_summary}[/dim grey]")
+
+    return Panel(
+        "\n".join(lines),
+        box=box_style,
+        title="[bold yellow]DETAILED STORY CONTEXT[/bold yellow]",
+        border_style="bright_green",
+        padding=(1, 2),
+    )
+
+
+def render_error_panel(
+    message: str,
+    options: Optional[List[str]] = None,
+    box_style: Box = box.HEAVY,
+) -> Panel:
+    """Render retro error or connection alert modal.
+
+    Args:
+        message: Error explanation message.
+        options: List of available recovery actions (e.g. ['[R]etry', '[F]allback', '[Q]uit']).
+        box_style: Rich Box character set.
+
+    Returns:
+        Formatted Alert Panel.
+    """
+    lines = [
+        f"[bold red]! SYSTEM ALERT ![/bold red]",
+        f"[white]{message}[/white]",
+    ]
+    if options:
+        lines.append("")
+        lines.append("[bold yellow]Options:[/] " + "  ".join(f"[bold]{opt}[/bold]" for opt in options))
+
+    return Panel(
+        "\n".join(lines),
+        box=box_style,
+        border_style="bold red",
+        padding=(1, 2),
+    )
+
+

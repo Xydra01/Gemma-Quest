@@ -2,12 +2,21 @@
 
 from .layout import (
     render_choices_panel,
+    render_detailed_status,
+    render_error_panel,
     render_game_over_screen,
     render_header,
+    render_help_panel,
     render_narrative_panel,
     render_settings_menu,
     render_status_panel,
     render_title_splash,
+)
+from .input_engine import (
+    ActionPayload,
+    InputEngine,
+    InputType,
+    sanitize_player_input,
 )
 from .onboarding import (
     OnboardingFlow,
@@ -25,6 +34,10 @@ from .theme import (
 __all__ = [
     "RetroTUI",
     "OnboardingFlow",
+    "InputEngine",
+    "InputType",
+    "ActionPayload",
+    "sanitize_player_input",
     "sanitize_player_name",
     "map_setting_choice",
     "render_header",
@@ -34,6 +47,9 @@ __all__ = [
     "render_settings_menu",
     "render_game_over_screen",
     "render_title_splash",
+    "render_help_panel",
+    "render_detailed_status",
+    "render_error_panel",
     "detect_terminal_capabilities",
     "get_retro_theme",
     "get_box_style",
