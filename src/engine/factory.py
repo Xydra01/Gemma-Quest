@@ -51,15 +51,13 @@ class LLMFactory:
                 or os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes")
             )
             project_id = cfg.visualizer.project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
-            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "global")
             api_key = cfg.llm.get_api_key()
 
             if use_vertexai and project_id and not cfg.llm.cloud_endpoint:
-                model_id = (
-                    cfg.llm.cloud_model_id
-                    if cfg.llm.cloud_model_id not in ("gemma-4-26b-a4b-it", "default")
-                    else "gemini-2.5-flash"
-                )
+                model_id = cfg.llm.cloud_model_id
+                if model_id in ("gemma-4-26b-a4b-it", "default", "", "gemma4", "gemma-4-31b", "gemma-4-31b-it"):
+                    model_id = "gemma-4-26b-a4b-it-maas"
                 return CloudProvider(
                     api_key=api_key or "",
                     endpoint=cfg.llm.cloud_endpoint,
@@ -99,15 +97,13 @@ class LLMFactory:
                 or os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes")
             )
             project_id = cfg.visualizer.project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
-            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "global")
             api_key = cfg.llm.get_api_key()
 
             if use_vertexai and project_id and not cfg.llm.cloud_endpoint:
-                model_id = (
-                    cfg.llm.cloud_model_id
-                    if cfg.llm.cloud_model_id not in ("gemma-4-26b-a4b-it", "default")
-                    else "gemini-2.5-flash"
-                )
+                model_id = cfg.llm.cloud_model_id
+                if model_id in ("gemma-4-26b-a4b-it", "default", "", "gemma4", "gemma-4-31b", "gemma-4-31b-it"):
+                    model_id = "gemma-4-26b-a4b-it-maas"
                 cloud_prov = CloudProvider(
                     api_key=api_key or "",
                     endpoint=cfg.llm.cloud_endpoint,

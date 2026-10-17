@@ -13,7 +13,7 @@ llm:
 
   # Cloud settings (Used if mode is cloud or hybrid)
   cloud_provider: "vertex_ai"
-  cloud_model_id: "gemma-4-26b-a4b-it"
+  cloud_model_id: "gemma-4-26b-a4b-it-maas"
   cloud_endpoint: ""
   api_key_env_var: "GEMMA_API_KEY"
 
@@ -49,12 +49,12 @@ visualizer:
   enabled: true
   # Backend: 'auto', 'vertex_ai' (uses ADC/project), or 'ai_studio'
   backend: "auto"
-  # Image generation model on Vertex AI
-  model: "gemini-2.5-flash-image"
+  # Image generation model on Vertex AI (Google's best pro-tier image model)
+  model: "gemini-3-pro-image"
   # Google Cloud Project ID (optional if set in GOOGLE_CLOUD_PROJECT env var)
   project_id: null
-  # Google Cloud region
-  location: "us-central1"
+  # Google Cloud region (global endpoint routes closest to user e.g. US East)
+  location: "global"
   # Visual style: 'pixel_art' (24-bit TrueColor ANSI half-blocks), 'ascii', or 'monochrome'
   style: "pixel_art"
   # Target dimensions in characters (76x22 fills standard 80-col terminal edge-to-edge)

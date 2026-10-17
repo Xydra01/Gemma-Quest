@@ -61,8 +61,12 @@ class SceneVisualizer:
 
             project_id = self.config.project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
             location = self.config.location or os.getenv(
-                "GOOGLE_CLOUD_LOCATION", "us-central1"
+                "GOOGLE_CLOUD_LOCATION", "global"
             )
+            # Foundation image models like gemini-3-pro-image are served via the global endpoint
+            if "gemini-3" in self.config.model or location in ("us-east1", "us-east4"):
+                location = "global"
+
             backend = self.config.backend
 
             # Determine whether to use Vertex AI with ADC
@@ -187,25 +191,32 @@ class SceneVisualizer:
                     f"generate_images attempt failed: {e}. Trying multimodal generate_content..."
                 )
 
-            # 2. If generate_images didn't produce bytes, try multimodal generate_content (e.g. gemini-3.1-flash-image)
+            # 2. If generate_images didn't produce bytes, try multimodal generate_content
             if not image_bytes:
-                try:
-                    res_content = client.models.generate_content(
-                        model=self.config.model,
-                        contents=prompt,
-                    )
-                    if res_content.candidates and len(res_content.candidates) > 0:
-                        for part in res_content.candidates[0].content.parts:
-                            if hasattr(part, "inline_data") and part.inline_data:
-                                data = part.inline_data.data
-                                if isinstance(data, str):
-                                    image_bytes = base64.b64decode(data)
-                                elif isinstance(data, bytes):
-                                    image_bytes = data
-                                break
-                except Exception as e2:
-                    logger.warning(f"Image generation failed: {e2}")
-                    image_bytes = None
+                candidate_models = [self.config.model]
+                for fb in ("gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-2.5-flash-image"):
+                    if fb not in candidate_models:
+                        candidate_models.append(fb)
+
+                for model_candidate in candidate_models:
+                    try:
+                        res_content = client.models.generate_content(
+                            model=model_candidate,
+                            contents=prompt,
+                        )
+                        if res_content.candidates and len(res_content.candidates) > 0:
+                            for part in res_content.candidates[0].content.parts:
+                                if hasattr(part, "inline_data") and part.inline_data:
+                                    data = part.inline_data.data
+                                    if isinstance(data, str):
+                                        image_bytes = base64.b64decode(data)
+                                    elif isinstance(data, bytes):
+                                        image_bytes = data
+                                    break
+                        if image_bytes:
+                            break
+                    except Exception as e2:
+                        logger.debug(f"Model {model_candidate} image generation attempt failed: {e2}")
 
         # Convert image bytes or return fallback
         if image_bytes:

@@ -101,69 +101,84 @@ class CloudProvider(InferenceProvider):
         except ImportError as e:
             raise InferenceConnectionError("google-genai package is not installed.") from e
 
-        try:
-            if not self._genai_client:
-                self._genai_client = genai.Client(
-                    vertexai=True,
-                    project=self.project_id,
-                    location=self.location,
+        # Map model if using gemma 4 variants or default
+        model = self.model_id
+        if model in ("gemma-4-26b-a4b-it", "gemma-4-26b", "gemma4", "gemma-4-31b", "gemma-4-31b-it", "default", ""):
+            model = "gemma-4-26b-a4b-it-maas"
+
+        # Location routing: Gemma 4 MaaS is hosted globally
+        location = self.location
+        if "maas" in model or "gemma" in model or location in ("us-east1", "us-east4", "us-central1"):
+            location = "global"
+
+        if not self._genai_client:
+            self._genai_client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=location,
+            )
+
+        system_instruction = None
+        contents = []
+
+        for m in messages:
+            role = m.get("role", "user").lower()
+            text = m.get("content", "")
+
+            if role == "system":
+                system_instruction = text
+            else:
+                api_role = "model" if role == "assistant" else "user"
+                contents.append(
+                    types.Content(
+                        role=api_role,
+                        parts=[types.Part.from_text(text=text)],
+                    )
                 )
 
-            system_instruction = None
-            contents = []
+        if not contents:
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text="Continue the story.")],
+                )
+            ]
 
-            for m in messages:
-                role = m.get("role", "user").lower()
-                text = m.get("content", "")
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max(max_tokens, 2048),
+            system_instruction=system_instruction,
+        )
 
-                if role == "system":
-                    system_instruction = text
-                else:
-                    api_role = "model" if role == "assistant" else "user"
-                    contents.append(
-                        types.Content(
-                            role=api_role,
-                            parts=[types.Part.from_text(text=text)],
+        max_attempts = 4
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self._genai_client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+                if not response or not response.text:
+                    raise InferenceError("Vertex AI returned empty response.")
+                return response.text.strip()
+            except Exception as e:
+                err_str = str(e)
+                if any(k in err_str for k in ("429", "ResourceExhausted", "RESOURCE_EXHAUSTED", "503", "queue is full")):
+                    if attempt < max_attempts:
+                        logger.warning(
+                            "Vertex AI server busy / queue full (attempt %d/%d). Retrying in %.1fs...",
+                            attempt,
+                            max_attempts,
+                            attempt * 1.5,
                         )
-                    )
-
-            if not contents:
-                contents = [
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text="Continue the story.")],
-                    )
-                ]
-
-            config = types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max(max_tokens, 2048),
-                system_instruction=system_instruction,
-            )
-
-            # Map model if using legacy or placeholder model ID
-            model = self.model_id
-            if model in ("gemma-4-26b-a4b-it", "default", ""):
-                model = "gemini-2.5-flash"
-
-            response = self._genai_client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config,
-            )
-
-            if not response or not response.text:
-                raise InferenceError("Vertex AI returned empty response.")
-            return response.text.strip()
-        except Exception as e:
-            err_str = str(e)
-            if any(k in err_str for k in ("401", "403", "PermissionDenied", "Unauthenticated")):
-                raise InferenceAuthError(f"Vertex AI authentication failed: {e}") from e
-            if any(k in err_str for k in ("429", "ResourceExhausted", "RESOURCE_EXHAUSTED")):
-                raise InferenceRateLimitError(f"Vertex AI quota / rate limit exceeded: {e}") from e
-            if "timeout" in err_str.lower() or "deadline" in err_str.lower():
-                raise InferenceTimeoutError(f"Vertex AI request timed out: {e}") from e
-            raise InferenceError(f"Vertex AI request failed: {e}") from e
+                        time.sleep(attempt * 1.5)
+                        continue
+                    raise InferenceRateLimitError(f"Vertex AI quota / rate limit exceeded: {e}") from e
+                if any(k in err_str for k in ("401", "403", "PermissionDenied", "Unauthenticated")):
+                    raise InferenceAuthError(f"Vertex AI authentication failed: {e}") from e
+                if "timeout" in err_str.lower() or "deadline" in err_str.lower():
+                    raise InferenceTimeoutError(f"Vertex AI request timed out: {e}") from e
+                raise InferenceError(f"Vertex AI request failed: {e}") from e
 
     def _chat_google_ai(
         self,
@@ -338,6 +353,6 @@ class CloudProvider(InferenceProvider):
     def get_status(self) -> str:
         """Returns TUI status string."""
         if self.use_vertexai:
-            model_display = self.model_id if self.model_id not in ("gemma-4-26b-a4b-it", "default", "") else "gemini-2.5-flash"
+            model_display = self.model_id if self.model_id not in ("default", "") else "gemma-4-26b-a4b-it-maas"
             return f"[CLOUD: Vertex AI ({model_display})]"
         return f"[CLOUD: {self.provider_name}]"
