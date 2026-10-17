@@ -221,7 +221,34 @@ def test_summary_refiner_execution_success():
     call_args = mock_provider.chat.call_args
     options = call_args[1]["options"]
     assert options["temperature"] == 0.2
-    assert options["max_tokens"] == 512
+    assert options["max_tokens"] == 1024
+
+
+def test_summary_refiner_filters_thinking_monologue():
+    """Verify that SummaryRefiner rejects reasoning scratchpad and retains existing summary."""
+    refiner = SummaryRefiner()
+    mock_provider = MagicMock(spec=InferenceProvider)
+
+    # Simulated reasoning scratchpad output from Gemma 4
+    mock_provider.chat.return_value = (
+        "* Role: Editor for a text adventure game.\n"
+        "* Task: Summarize the interaction in exactly 3 sentences.\n"
+        "* Focus: Plot changes, new locations, character status changes.\n"
+        "* Constraints: No flavor text, output only summary.\n"
+        "* Draft 1: The player picks up a stick.\n"
+    )
+
+    current_summary = "Eric fled The Rusty Gate and reached the Roaring Ravine."
+    result = refiner.refine_summary(
+        provider=mock_provider,
+        player_input="Turn around and pick up a stick",
+        last_narration="Eric turns back and grabs a branch.",
+        current_summary=current_summary,
+    )
+
+    # Must preserve current_summary and NEVER adopt the thinking scratchpad
+    assert result == current_summary
+    assert not result.startswith("*")
 
 
 def test_summary_refiner_execution_fallback():

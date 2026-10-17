@@ -291,6 +291,27 @@ def test_narrative_validator_summary_and_location_fallback():
     assert validated.updated_story_context.story_summary == "You entered the crypt looking for the sacred amulet."
 
 
+def test_narrative_validator_rejects_contaminated_summary():
+    """Verify Guardian validator retains authoritative summary when model summary has thinking trace."""
+    context = StoryContext(
+        current_location="The Roaring Ravine",
+        story_summary="Eric fled The Rusty Gate and reached the Roaring Ravine.",
+    )
+
+    candidate = GameResponse(
+        narration="Eric readies his stick.",
+        choices=["[1] Attack", "[2] Evade"],
+        updated_story_context=StoryContext(
+            current_location="The Roaring Ravine",
+            story_summary="* Role: Editor for a text adventure game.\n* Task: Summarize in 3 sentences.",
+        ),
+    )
+
+    validated = NarrativeValidator.validate_response(candidate, context)
+    assert validated.updated_story_context.story_summary == "Eric fled The Rusty Gate and reached the Roaring Ravine."
+    assert not validated.updated_story_context.story_summary.startswith("*")
+
+
 def test_extract_json_string_with_model_thinking_monologue():
     """Verify that model scratchpad/thinking text with multiple braces is bypassed in favor of the real JSON."""
     raw_output = """

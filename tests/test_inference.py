@@ -157,6 +157,46 @@ def test_cloud_provider_google_ai_protocol():
         assert "contents" in call_kwargs["json"]
 
 
+def test_cloud_provider_google_ai_thinking_parts():
+    """Verify that Google AI extracts non-thought completion parts over thought parts."""
+    provider = CloudProvider(
+        api_key="test-key",
+        endpoint="",
+        model_id="gemma-4-26b-a4b-it",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {"thought": True, "text": "* Internal reasoning monologue *"},
+                        {"text": '{"narration": "You stand before the ancient gate."}'},
+                    ]
+                }
+            }
+        ]
+    }
+
+    with patch("httpx.Client.post", return_value=mock_resp):
+        result = provider.chat([{"role": "user", "content": "look"}])
+        assert result == '{"narration": "You stand before the ancient gate."}'
+        assert "* Internal reasoning" not in result
+
+
+def test_cloud_provider_rejects_empty_response():
+    """Verify that CloudProvider raises InferenceError on empty response."""
+    provider = CloudProvider(api_key="test-key", endpoint="https://api.example.com")
+    mock_resp = MagicMock(status_code=200)
+    mock_resp.json.return_value = {"choices": [{"message": {"content": "   "}}]}
+
+    with patch("httpx.Client.post", return_value=mock_resp):
+        with pytest.raises(InferenceError, match="empty or whitespace response"):
+            provider.chat([{"role": "user", "content": "hi"}])
+
+
 def test_cloud_provider_http_errors():
     """Verify translation of HTTP error statuses."""
     provider = CloudProvider(api_key="key", endpoint="https://example.com")

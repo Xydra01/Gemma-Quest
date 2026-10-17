@@ -85,10 +85,18 @@ def sync_state(
 
     # 4. Rolling Story Summary Fallback
     new_summary = proposed_context.story_summary.strip()
-    if len(new_summary) >= MIN_SUMMARY_LENGTH:
+    is_contaminated = (
+        new_summary.startswith("*")
+        or new_summary.startswith("-")
+        or any(k in new_summary for k in ["Role: Editor", "Task: Summarize", "Constraint", "Draft 1:"])
+    )
+    if len(new_summary) >= MIN_SUMMARY_LENGTH and not is_contaminated:
         updated_summary = new_summary
     else:
-        logger.warning("Proposed summary too short/empty. Retaining previous summary.")
+        if is_contaminated:
+            logger.warning("Proposed summary contains thinking/scratchpad artifacts. Retaining previous summary.")
+        else:
+            logger.warning("Proposed summary too short/empty. Retaining previous summary.")
         updated_summary = local_context.story_summary
 
     # 5. World Tone

@@ -244,7 +244,12 @@ def create_fallback_response(
         m_sum = re.search(r'(?:Summary|`story_summary`):\s*["\']?([^"\'\n]{20,})["\']?', raw_text)
     if m_sum:
         sum_candidate = m_sum.group(1).strip()
-        if len(sum_candidate) > 15:
+        is_contaminated = (
+            sum_candidate.startswith("*")
+            or sum_candidate.startswith("-")
+            or any(k in sum_candidate for k in ["Role: Editor", "Task: Summarize", "Constraint", "Draft 1:"])
+        )
+        if len(sum_candidate) > 15 and not is_contaminated:
             fallback_context.story_summary = sum_candidate
 
     # 5. Clean narration sanitization: filter out thinking/meta lines

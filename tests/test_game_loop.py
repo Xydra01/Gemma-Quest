@@ -158,6 +158,27 @@ class TestGameEngineTurns:
         response = await engine.execute_turn("Examine the runes")
         assert response is None
 
+    @pytest.mark.asyncio
+    async def test_execute_turn_empty_provider_output(self, test_context, mock_tui):
+        """Verify that empty model output is gracefully caught and does not crash with 'Unknown error'."""
+        provider = MockProvider(response_text="   ")
+        engine = GameEngine(
+            config=AppConfig(),
+            provider=provider,
+            tui=mock_tui,
+        )
+        engine.context = test_context
+
+        # Simulate user choosing 'f' (fallback) in recovery prompt
+        recovery_inputs = iter(["f"])
+        engine.input_engine._input_func = lambda _: next(recovery_inputs)
+
+        response = await engine.execute_turn("Search the alcove")
+        assert response is not None
+        assert engine.context.turn_count == 1
+        output = mock_tui.console.export_text()
+        assert "empty or whitespace" in output.lower()
+
 
 class TestGameEngineLoop:
     """Test GameEngine interactive loop handling commands and game over."""
