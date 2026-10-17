@@ -26,7 +26,7 @@ class LLMConfig(BaseModel):
         default="local", description="Inference mode: 'local', 'cloud', or 'hybrid'"
     )
     local_model: str = Field(
-        default="gemma4:2b-q4_0", description="Ollama model identifier"
+        default="gemma4:e2b", description="Ollama model identifier"
     )
     ollama_base_url: str = Field(
         default="http://localhost:11434", description="Base URL for local Ollama server"
@@ -35,7 +35,7 @@ class LLMConfig(BaseModel):
         default="vertex_ai", description="Cloud provider identifier"
     )
     cloud_model_id: str = Field(
-        default="gemma-4-instruct", description="Cloud model identifier"
+        default="gemma-4-26b-a4b-it", description="Cloud model identifier"
     )
     cloud_endpoint: str = Field(
         default="", description="Optional custom cloud endpoint URL"
@@ -50,7 +50,7 @@ class LLMConfig(BaseModel):
     top_k: int = Field(default=50, ge=1, description="Top-k sampling")
     max_tokens: int = Field(default=1024, ge=64, description="Max tokens per response")
     timeout_seconds: int = Field(
-        default=30, ge=1, description="Inference timeout in seconds"
+        default=60, ge=1, description="Inference timeout in seconds"
     )
 
     def get_api_key(self) -> Optional[str]:
