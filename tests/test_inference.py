@@ -125,6 +125,38 @@ def test_cloud_provider_success():
     assert provider.get_status() == "[CLOUD: vertex_ai]"
 
 
+def test_cloud_provider_google_ai_protocol():
+    """Verify Google AI Studio generateContent payload format and header."""
+    provider = CloudProvider(
+        api_key="test-google-key",
+        endpoint="",  # Default Google AI Studio endpoint
+        model_id="gemma-4-26b-a4b-it",
+        provider_name="google_ai",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [
+            {"content": {"parts": [{"text": "A cold draft fills the hallway."}]}}
+        ]
+    }
+
+    with patch("httpx.Client.post", return_value=mock_resp) as mock_post:
+        messages = [
+            {"role": "system", "content": "You are a DM."},
+            {"role": "user", "content": "I open the door."},
+        ]
+        result = provider.chat(messages)
+        assert result == "A cold draft fills the hallway."
+
+        mock_post.assert_called_once()
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["headers"]["x-goog-api-key"] == "test-google-key"
+        assert "systemInstruction" in call_kwargs["json"]
+        assert "contents" in call_kwargs["json"]
+
+
 def test_cloud_provider_http_errors():
     """Verify translation of HTTP error statuses."""
     provider = CloudProvider(api_key="key", endpoint="https://example.com")

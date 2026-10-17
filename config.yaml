@@ -13,7 +13,7 @@ llm:
 
   # Cloud settings (Used if mode is cloud or hybrid)
   cloud_provider: "vertex_ai"
-  cloud_model_id: "gemma-4-instruct"
+  cloud_model_id: "gemma-4-26b-a4b-it"
   cloud_endpoint: ""
   api_key_env_var: "GEMMA_API_KEY"
 

@@ -70,7 +70,7 @@ class LLMFactory:
 
             cloud_prov = None
             api_key = cfg.llm.get_api_key()
-            if api_key and cfg.llm.cloud_endpoint:
+            if api_key:
                 cloud_prov = CloudProvider(
                     api_key=api_key,
                     endpoint=cfg.llm.cloud_endpoint,

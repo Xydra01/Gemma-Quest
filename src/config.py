@@ -35,7 +35,7 @@ class LLMConfig(BaseModel):
         default="vertex_ai", description="Cloud provider identifier"
     )
     cloud_model_id: str = Field(
-        default="gemma-4-instruct", description="Cloud model identifier"
+        default="gemma-4-26b-a4b-it", description="Cloud model identifier"
     )
     cloud_endpoint: str = Field(
         default="", description="Optional custom cloud endpoint URL"
