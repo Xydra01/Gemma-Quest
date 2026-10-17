@@ -1,5 +1,6 @@
 """Scene visualizer service using Vertex AI Imagen 3 and retro ANSI rendering."""
 
+import base64
 import hashlib
 import logging
 import os
@@ -172,6 +173,7 @@ class SceneVisualizer:
 
         if client:
             prompt = self._build_pixel_art_prompt(location, narration, world_tone)
+            # 1. Try dedicated generate_images endpoint (e.g. Imagen 3)
             try:
                 response = client.models.generate_images(
                     model=self.config.model,
@@ -181,8 +183,29 @@ class SceneVisualizer:
                 if response.generated_images and len(response.generated_images) > 0:
                     image_bytes = response.generated_images[0].image.image_bytes
             except Exception as e:
-                logger.warning(f"Vertex AI image generation failed: {e}")
-                image_bytes = None
+                logger.debug(
+                    f"generate_images attempt failed: {e}. Trying multimodal generate_content..."
+                )
+
+            # 2. If generate_images didn't produce bytes, try multimodal generate_content (e.g. gemini-3.1-flash-image)
+            if not image_bytes:
+                try:
+                    res_content = client.models.generate_content(
+                        model=self.config.model,
+                        contents=prompt,
+                    )
+                    if res_content.candidates and len(res_content.candidates) > 0:
+                        for part in res_content.candidates[0].content.parts:
+                            if hasattr(part, "inline_data") and part.inline_data:
+                                data = part.inline_data.data
+                                if isinstance(data, str):
+                                    image_bytes = base64.b64decode(data)
+                                elif isinstance(data, bytes):
+                                    image_bytes = data
+                                break
+                except Exception as e2:
+                    logger.warning(f"Image generation failed: {e2}")
+                    image_bytes = None
 
         # Convert image bytes or return fallback
         if image_bytes:
