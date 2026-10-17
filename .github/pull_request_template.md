@@ -13,6 +13,7 @@
 <!-- MANDATORY: Describe how the changes were tested live in the local environment. -->
 <!-- Include exact commands executed, live terminal outputs, screenshots, or logs. -->
 - **Live Test Command(s):** `...`
+- **Inference Backend Tested:** `Cloud API` | `Local Ollama` | `N/A`
 - **Observed Behavior:**
 - **Edge Cases Tested:**
 

@@ -30,6 +30,7 @@ Welcome to **Gemma-Quest**! When working on this repository, all AI agents and c
 - **Live Execution Required:** All changes must be tested and demonstrated to run properly **live** in the local environment before declaring any work complete.
 - **Verification Standards:**
   - Run the application or CLI/TUI directly to verify interactive behavior, startup, and error handling.
+  - **Dual-Mode LLM Testing (Cloud API vs. Local):** Once the Gemma 4 API is implemented, live tests can be conducted either through the Cloud API or locally via Ollama if the API fails (e.g. missing API keys, rate limits, or network connectivity issues). Pull requests must specify which backend was exercised during live verification.
   - Test edge cases (e.g., model disconnects, invalid player inputs, corrupted game state).
   - Ensure zero regressions in existing flows before marking a task complete.
   - Never mark a task as finished based solely on code review or static assumptions.
@@ -76,6 +77,7 @@ When opening a Pull Request (PR), agents and contributors must use the following
 <!-- MANDATORY: Describe how the changes were tested live in the local environment. -->
 <!-- Include exact commands executed, live terminal outputs, screenshots, or logs. -->
 - **Live Test Command(s):** `...`
+- **Inference Backend Tested:** `Cloud API` | `Local Ollama` | `N/A`
 - **Observed Behavior:**
 - **Edge Cases Tested:**
 
