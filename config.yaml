@@ -1,0 +1,45 @@
+app:
+  name: "Gemma Dungeon"
+  version: "1.0.0"
+  theme: "retro"
+
+llm:
+  # Inference mode: 'local', 'cloud', or 'hybrid'
+  mode: "local"
+
+  # Local settings (Ollama)
+  local_model: "gemma4:2b-q4_0"
+  ollama_base_url: "http://localhost:11434"
+
+  # Cloud settings (Used if mode is cloud or hybrid)
+  cloud_provider: "vertex_ai"
+  cloud_model_id: "gemma-4-instruct"
+  cloud_endpoint: ""
+  api_key_env_var: "GEMMA_API_KEY"
+
+  # Sampling parameters
+  temperature: 0.8
+  top_p: 0.9
+  top_k: 50
+  max_tokens: 1024
+  timeout_seconds: 30
+
+resilience:
+  # Hybrid fallback timeout (seconds before falling back to local provider)
+  hybrid_fallback_timeout: 5.0
+  # Number of consecutive cloud failures before switching off cloud for the session
+  circuit_breaker_threshold: 3
+  # Maximum automatic retries for malformed JSON responses
+  max_parse_retries: 1
+
+context:
+  # Turns between automatic summary refinement
+  summary_refinement_turn_interval: 5
+  # Character count threshold triggering summary refinement
+  summary_refinement_char_threshold: 200
+  # Warning threshold ratio of context window (4096 tokens)
+  context_window_warning_ratio: 0.8
+  # Maximum active NPCs retained in state
+  max_active_npcs: 10
+  # Number of turns dead or inactive NPCs remain before pruning
+  npc_prune_turn_threshold: 10
