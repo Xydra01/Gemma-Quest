@@ -17,6 +17,7 @@ from .initializer import (
     create_starter_fallback_response,
 )
 from .local import LocalProvider
+from .loop import GameEngine, create_turn_fallback_response
 from .parser import (
     ParseResult,
     ResponseParser,
@@ -48,4 +49,6 @@ __all__ = [
     "OpeningSceneGenerator",
     "create_initial_context",
     "create_starter_fallback_response",
+    "GameEngine",
+    "create_turn_fallback_response",
 ]
