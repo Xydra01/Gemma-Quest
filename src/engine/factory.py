@@ -1,6 +1,7 @@
 """Factory pattern for instantiating LLM inference providers."""
 
 import logging
+import os
 from typing import Optional
 from src.config import GameConfig, load_config
 from .base import InferenceAuthError, InferenceProvider
@@ -29,7 +30,7 @@ class LLMFactory:
             Configured InferenceProvider (LocalProvider, CloudProvider, or HybridWrapper).
 
         Raises:
-            InferenceAuthError: If Cloud mode is requested without an API key.
+            InferenceAuthError: If Cloud mode is requested without an API key or Vertex AI config.
             ValueError: If an unrecognized mode is specified.
         """
         cfg = config or load_config()
@@ -45,7 +46,31 @@ class LLMFactory:
 
         # Cloud Mode
         elif mode == "cloud":
+            use_vertexai = (
+                cfg.visualizer.backend == "vertex_ai"
+                or os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes")
+            )
+            project_id = cfg.visualizer.project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
+            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
             api_key = cfg.llm.get_api_key()
+
+            if use_vertexai and project_id and not cfg.llm.cloud_endpoint:
+                model_id = (
+                    cfg.llm.cloud_model_id
+                    if cfg.llm.cloud_model_id not in ("gemma-4-26b-a4b-it", "default")
+                    else "gemini-2.5-flash"
+                )
+                return CloudProvider(
+                    api_key=api_key or "",
+                    endpoint=cfg.llm.cloud_endpoint,
+                    model_id=model_id,
+                    provider_name="vertex_ai",
+                    timeout_seconds=cfg.llm.timeout_seconds,
+                    use_vertexai=True,
+                    project_id=project_id,
+                    location=location,
+                )
+
             if not api_key:
                 raise InferenceAuthError(
                     f"Cloud inference requested, but environment variable '{cfg.llm.api_key_env_var}' "
@@ -69,8 +94,31 @@ class LLMFactory:
             )
 
             cloud_prov = None
+            use_vertexai = (
+                cfg.visualizer.backend == "vertex_ai"
+                or os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1", "yes")
+            )
+            project_id = cfg.visualizer.project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
+            location = cfg.visualizer.location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
             api_key = cfg.llm.get_api_key()
-            if api_key:
+
+            if use_vertexai and project_id and not cfg.llm.cloud_endpoint:
+                model_id = (
+                    cfg.llm.cloud_model_id
+                    if cfg.llm.cloud_model_id not in ("gemma-4-26b-a4b-it", "default")
+                    else "gemini-2.5-flash"
+                )
+                cloud_prov = CloudProvider(
+                    api_key=api_key or "",
+                    endpoint=cfg.llm.cloud_endpoint,
+                    model_id=model_id,
+                    provider_name="vertex_ai",
+                    timeout_seconds=cfg.llm.timeout_seconds,
+                    use_vertexai=True,
+                    project_id=project_id,
+                    location=location,
+                )
+            elif api_key:
                 cloud_prov = CloudProvider(
                     api_key=api_key,
                     endpoint=cfg.llm.cloud_endpoint,

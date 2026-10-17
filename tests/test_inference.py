@@ -328,3 +328,40 @@ def test_llm_factory_modes(monkeypatch):
     cfg.llm.mode = "hybrid"
     prov_hybrid = LLMFactory.get_provider(cfg)
     assert isinstance(prov_hybrid, HybridWrapper)
+
+
+def test_cloud_provider_vertex_ai_mode():
+    """Verify that CloudProvider routes to Vertex AI client when use_vertexai is True."""
+    provider = CloudProvider(
+        use_vertexai=True,
+        project_id="test-project",
+        location="us-central1",
+        model_id="gemini-2.5-flash",
+    )
+    assert provider.is_available() is True
+    assert "Vertex AI" in provider.get_status()
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = '{"narration": "You stand in a sunlit glade."}'
+    mock_client.models.generate_content.return_value = mock_response
+    provider._genai_client = mock_client
+
+    result = provider.chat([{"role": "user", "content": "Look around"}])
+    assert result == '{"narration": "You stand in a sunlit glade."}'
+    mock_client.models.generate_content.assert_called_once()
+
+
+def test_llm_factory_vertex_ai_mode(monkeypatch):
+    """Verify that LLMFactory instantiates Vertex AI CloudProvider when project is configured."""
+    cfg = GameConfig()
+    cfg.llm.mode = "cloud"
+    cfg.visualizer.backend = "vertex_ai"
+    cfg.visualizer.project_id = "test-project-123"
+
+    monkeypatch.delenv("GEMMA_API_KEY", raising=False)
+    provider = LLMFactory.get_provider(cfg)
+    assert isinstance(provider, CloudProvider)
+    assert provider.use_vertexai is True
+    assert provider.project_id == "test-project-123"
+

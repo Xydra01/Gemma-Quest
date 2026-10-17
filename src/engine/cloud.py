@@ -30,20 +30,29 @@ class CloudProvider(InferenceProvider):
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str = "",
         endpoint: str = "",
-        model_id: str = "gemma-4-26b-a4b-it",
+        model_id: str = "gemini-2.5-flash",
         provider_name: str = "vertex_ai",
         timeout_seconds: int = 30,
+        use_vertexai: bool = False,
+        project_id: Optional[str] = None,
+        location: str = "us-central1",
     ):
         self.api_key = api_key.strip() if api_key else ""
         self.endpoint = endpoint.strip() if endpoint else ""
         self.model_id = model_id
         self.provider_name = provider_name
         self.timeout_seconds = timeout_seconds
+        self.use_vertexai = use_vertexai
+        self.project_id = project_id
+        self.location = location
+        self._genai_client = None
 
     def is_available(self) -> bool:
-        """Verifies that an API key is configured."""
+        """Verifies that an API key or Vertex AI project is configured."""
+        if self.use_vertexai and self.project_id:
+            return True
         return bool(self.api_key)
 
     def _is_google_ai(self) -> bool:
@@ -58,7 +67,7 @@ class CloudProvider(InferenceProvider):
         options: Optional[dict] = None,
     ) -> str:
         """Sends chat messages to the remote cloud API endpoint."""
-        if not self.api_key:
+        if not self.use_vertexai and not self.api_key:
             raise InferenceAuthError("Cloud inference failed: Missing API key.")
 
         options = options or {}
@@ -66,7 +75,9 @@ class CloudProvider(InferenceProvider):
         max_tokens = int(options.get("max_tokens", 1024))
         timeout = float(options.get("timeout_seconds", self.timeout_seconds))
 
-        if self._is_google_ai():
+        if self.use_vertexai:
+            result = self._chat_vertex_ai(messages, temperature, max_tokens, timeout)
+        elif self._is_google_ai():
             result = self._chat_google_ai(messages, temperature, max_tokens, timeout)
         else:
             result = self._chat_openai_rest(messages, options, timeout)
@@ -75,6 +86,84 @@ class CloudProvider(InferenceProvider):
             raise InferenceError("Cloud provider returned empty or whitespace response.")
 
         return result
+
+    def _chat_vertex_ai(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        timeout: float,
+    ) -> str:
+        """Executes completion via Google GenAI Vertex AI client using Application Default Credentials."""
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as e:
+            raise InferenceConnectionError("google-genai package is not installed.") from e
+
+        try:
+            if not self._genai_client:
+                self._genai_client = genai.Client(
+                    vertexai=True,
+                    project=self.project_id,
+                    location=self.location,
+                )
+
+            system_instruction = None
+            contents = []
+
+            for m in messages:
+                role = m.get("role", "user").lower()
+                text = m.get("content", "")
+
+                if role == "system":
+                    system_instruction = text
+                else:
+                    api_role = "model" if role == "assistant" else "user"
+                    contents.append(
+                        types.Content(
+                            role=api_role,
+                            parts=[types.Part.from_text(text=text)],
+                        )
+                    )
+
+            if not contents:
+                contents = [
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text="Continue the story.")],
+                    )
+                ]
+
+            config = types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max(max_tokens, 2048),
+                system_instruction=system_instruction,
+            )
+
+            # Map model if using legacy or placeholder model ID
+            model = self.model_id
+            if model in ("gemma-4-26b-a4b-it", "default", ""):
+                model = "gemini-2.5-flash"
+
+            response = self._genai_client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+
+            if not response or not response.text:
+                raise InferenceError("Vertex AI returned empty response.")
+            return response.text.strip()
+        except Exception as e:
+            err_str = str(e)
+            if any(k in err_str for k in ("401", "403", "PermissionDenied", "Unauthenticated")):
+                raise InferenceAuthError(f"Vertex AI authentication failed: {e}") from e
+            if any(k in err_str for k in ("429", "ResourceExhausted", "RESOURCE_EXHAUSTED")):
+                raise InferenceRateLimitError(f"Vertex AI quota / rate limit exceeded: {e}") from e
+            if "timeout" in err_str.lower() or "deadline" in err_str.lower():
+                raise InferenceTimeoutError(f"Vertex AI request timed out: {e}") from e
+            raise InferenceError(f"Vertex AI request failed: {e}") from e
 
     def _chat_google_ai(
         self,
@@ -248,4 +337,7 @@ class CloudProvider(InferenceProvider):
 
     def get_status(self) -> str:
         """Returns TUI status string."""
+        if self.use_vertexai:
+            model_display = self.model_id if self.model_id not in ("gemma-4-26b-a4b-it", "default", "") else "gemini-2.5-flash"
+            return f"[CLOUD: Vertex AI ({model_display})]"
         return f"[CLOUD: {self.provider_name}]"
