@@ -88,7 +88,19 @@ def parse_args() -> argparse.Namespace:
         "--visual-model",
         type=str,
         default=None,
-        help="Image generation model override (e.g. imagen-3.0-generate-002)",
+        help="Image generation model override (e.g. gemini-2.5-flash-image)",
+    )
+    parser.add_argument(
+        "--visual-width",
+        type=int,
+        default=None,
+        help="Visual scene illustration width in characters (default: 76)",
+    )
+    parser.add_argument(
+        "--visual-height",
+        type=int,
+        default=None,
+        help="Visual scene illustration height in characters (default: 22)",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -158,6 +170,10 @@ async def run_adventure(args: argparse.Namespace) -> None:
         config.visualizer.style = "ascii"
     if args.visual_model:
         config.visualizer.model = args.visual_model
+    if args.visual_width:
+        config.visualizer.width = args.visual_width
+    if args.visual_height:
+        config.visualizer.height = args.visual_height
 
     # 2. Initialize TUI & Input Engine
     tui = RetroTUI(

@@ -57,9 +57,9 @@ visualizer:
   location: "us-central1"
   # Visual style: 'pixel_art' (24-bit TrueColor ANSI half-blocks), 'ascii', or 'monochrome'
   style: "pixel_art"
-  # Target dimensions in characters
-  width: 60
-  height: 18
+  # Target dimensions in characters (76x22 fills standard 80-col terminal edge-to-edge)
+  width: 76
+  height: 22
   # Local disk cache directory for generated scenes
   cache_dir: "data/cache/scenes"
 

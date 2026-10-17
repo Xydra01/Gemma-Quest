@@ -141,13 +141,14 @@ def render_scene_panel(
     Returns:
         Formatted Scene Illustration Panel.
     """
+    from rich.align import Align
     from rich.text import Text
 
     clean_art = visual_art.strip("\r\n") if visual_art else ""
     rich_content = Text.from_ansi(clean_art, no_wrap=True)
 
     return Panel(
-        rich_content,
+        Align.center(rich_content),
         box=box_style,
         title=f"[bold yellow]{title}[/bold yellow]",
         border_style="yellow",

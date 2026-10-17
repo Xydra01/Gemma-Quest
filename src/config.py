@@ -121,10 +121,10 @@ class VisualizerConfig(BaseModel):
         description="Rendering style: 'pixel_art' (TrueColor ANSI), 'ascii', or 'monochrome'",
     )
     width: int = Field(
-        default=60, ge=20, le=120, description="Visualizer character width"
+        default=76, ge=20, le=240, description="Visualizer character width"
     )
     height: int = Field(
-        default=18, ge=6, le=40, description="Visualizer character height"
+        default=22, ge=6, le=80, description="Visualizer character height"
     )
     cache_dir: str = Field(
         default="data/cache/scenes", description="Directory to cache generated images"
@@ -195,6 +195,16 @@ def load_config(config_path: Optional[str | Path] = None) -> GameConfig:
             "1",
             "yes",
         )
+    if os.getenv("GEMMA_VISUAL_WIDTH"):
+        try:
+            vis_data["width"] = int(os.getenv("GEMMA_VISUAL_WIDTH"))
+        except ValueError:
+            pass
+    if os.getenv("GEMMA_VISUAL_HEIGHT"):
+        try:
+            vis_data["height"] = int(os.getenv("GEMMA_VISUAL_HEIGHT"))
+        except ValueError:
+            pass
 
     return GameConfig(**config_data)
 

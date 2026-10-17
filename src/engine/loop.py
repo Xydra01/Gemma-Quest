@@ -411,7 +411,7 @@ class GameEngine:
             # Generate or retrieve cached scene illustration
             scene_art = None
             vis_cfg = getattr(self.config, "visualizer", None)
-            is_enabled = getattr(vis_cfg, "enabled", True) if vis_cfg is not None else True
+            is_enabled = getattr(vis_cfg, "enabled", False) if vis_cfg is not None else False
             if self.visualizer and is_enabled:
                 try:
                     scene_art = await asyncio.to_thread(
