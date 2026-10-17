@@ -25,6 +25,7 @@ class LocalProvider(InferenceProvider):
         timeout_seconds: int = 30,
     ):
         self.model_name = model_name
+        self.provider_name = "ollama"
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.client = ollama.Client(host=self.base_url, timeout=self.timeout_seconds)

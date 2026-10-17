@@ -105,7 +105,16 @@ class InputEngine:
                 action_text=self.DEFAULT_WAIT_ACTION,
             )
 
-        # 2. Check for slash commands
+        # 2. Check for debug / inspection commands
+        lower_input = sanitized.lower()
+        if lower_input in ("?", "[?]", "debug", "/debug", "/inspect"):
+            return ActionPayload(
+                input_type=InputType.COMMAND,
+                action_text=sanitized,
+                command_name="debug",
+            )
+
+        # 3. Check for slash commands
         if sanitized.startswith("/"):
             cmd_lower = sanitized.lower()
             if cmd_lower in ("/help", "/h", "/?"):

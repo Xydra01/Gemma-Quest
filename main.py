@@ -13,6 +13,7 @@ from typing import Optional
 
 from src.config import GameConfig, load_config
 from src.engine.base import InferenceProvider
+from src.engine.diagnostics import SessionLogger
 from src.engine.factory import LLMFactory
 from src.engine.initializer import OpeningSceneGenerator
 from src.engine.loop import GameEngine
@@ -64,6 +65,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Force plain ASCII borders (+, -, |) instead of Unicode box characters",
+    )
+    parser.add_argument(
+        "--debug-log",
+        type=str,
+        default="debug_log.txt",
+        help="Path to diagnostic session log (default: debug_log.txt)",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -167,6 +174,7 @@ async def run_adventure(args: argparse.Namespace) -> None:
             input_engine=input_engine,
             timeout_seconds=args.timeout,
             player_name=player_setup.player_name,
+            session_logger=SessionLogger(log_path=args.debug_log),
         )
 
         exit_code = await engine.run(context, opening_response)
