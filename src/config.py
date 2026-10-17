@@ -55,7 +55,11 @@ class LLMConfig(BaseModel):
 
     def get_api_key(self) -> Optional[str]:
         """Retrieve the cloud API key from the environment."""
-        return os.getenv(self.api_key_env_var)
+        return (
+            os.getenv(self.api_key_env_var)
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+        )
 
 
 class ResilienceConfig(BaseModel):
